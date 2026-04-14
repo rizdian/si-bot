@@ -2,6 +2,7 @@ services:
   bot:
     build: .
     container_name: si-bot
-    env_file:
-      - .env
+    environment:
+      - DISCORD_TOKEN
+      - LOG_CHANNEL_ID
     restart: unless-stopped
