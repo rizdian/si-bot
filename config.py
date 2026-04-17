@@ -19,3 +19,4 @@ def get_env_int(key: str):
 TOKEN = os.getenv("DISCORD_TOKEN")
 LOG_CHANNEL_ID = get_env_int("LOG_CHANNEL_ID")
 OWNER_USER_ID = get_env_int("OWNER_USER_ID")
+GUILD_ID = get_env_int("GUILD_ID")
