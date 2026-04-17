@@ -1,8 +1,12 @@
 from datetime import datetime, timezone
 from typing import Iterable, Optional
+import logging
 
 import discord
 from config import LOG_CHANNEL_ID
+
+
+logger = logging.getLogger("discord_logger")
 
 
 def now_utc() -> datetime:
@@ -29,32 +33,40 @@ async def send_log_embed(
     fields: Optional[Iterable[tuple[str, str, bool]]] = None,
 ) -> None:
     if not LOG_CHANNEL_ID:
-        print("❌ LOG_CHANNEL_ID belum diset!")
+        logger.warning("LOG_CHANNEL_ID belum diset!")
         return
 
     channel = client.get_channel(LOG_CHANNEL_ID)
+
     if not channel:
-        print(f"❌ Channel log dengan ID {LOG_CHANNEL_ID} tidak ditemukan!")
+        logger.error("Channel log dengan ID %s tidak ditemukan!", LOG_CHANNEL_ID)
         return
 
     if not isinstance(channel, discord.TextChannel):
-        print(f"❌ Channel ID {LOG_CHANNEL_ID} bukan TextChannel!")
+        logger.error("Channel ID %s bukan TextChannel!", LOG_CHANNEL_ID)
         return
 
-    embed = discord.Embed(
-        title=title,
-        description=description,
-        color=color,
-        timestamp=now_utc(),
-    )
+    try:
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=now_utc(),
+        )
 
-    if fields:
-        for name, value, inline in fields:
-            embed.add_field(
-                name=name,
-                value=truncate_text(str(value), 1024),
-                inline=inline,
-            )
+        if fields:
+            for name, value, inline in fields:
+                embed.add_field(
+                    name=name,
+                    value=truncate_text(str(value), 1024),
+                    inline=inline,
+                )
 
-    embed.set_footer(text=f"SI BOT • {now_utc().strftime('%H:%M:%S UTC')}")
-    await channel.send(embed=embed)
+        embed.set_footer(text=f"SI BOT • {now_utc().strftime('%H:%M:%S UTC')}")
+
+        await channel.send(embed=embed)
+
+        logger.info("Log embed terkirim: %s", title)
+
+    except Exception:
+        logger.exception("Gagal mengirim log embed ke channel")

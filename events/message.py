@@ -1,4 +1,5 @@
 import discord
+
 from config import OWNER_USER_ID
 from utils.logger import send_log_embed
 
@@ -8,26 +9,14 @@ def is_mentioned(message: discord.Message, user_id: int) -> bool:
 
 
 def register_message_events(client: discord.Client):
-
-    # =========================
-    # MESSAGE CREATE (AUTO RESPONSE)
-    # =========================
     @client.event
     async def on_message(message: discord.Message) -> None:
-        # ignore bot
         if message.author.bot:
             return
 
-        # auto response jika owner di-tag
         if OWNER_USER_ID and is_mentioned(message, OWNER_USER_ID):
             await message.reply("Kenapa si Tag-tag")
 
-        # WAJIB agar slash command tetap jalan
-        await client.process_commands(message)
-
-    # =========================
-    # MESSAGE DELETE
-    # =========================
     @client.event
     async def on_message_delete(message: discord.Message) -> None:
         if message.author.bot:
@@ -44,9 +33,6 @@ def register_message_events(client: discord.Client):
             ],
         )
 
-    # =========================
-    # MESSAGE EDIT
-    # =========================
     @client.event
     async def on_message_edit(before: discord.Message, after: discord.Message) -> None:
         if before.author.bot:
