@@ -4,9 +4,8 @@ from config import OWNER_USER_ID
 from utils.logger import send_log_embed
 
 
-def is_mentioned(message: discord.Message, user_id: int) -> bool:
-    return any(user.id == user_id for user in message.mentions)
-
+def is_manual_mention(message: discord.Message, user_id: int) -> bool:
+    return f"<@{user_id}>" in message.content or f"<@!{user_id}>" in message.content
 
 def register_message_events(client: discord.Client):
     @client.event
@@ -14,7 +13,7 @@ def register_message_events(client: discord.Client):
         if message.author.bot:
             return
 
-        if OWNER_USER_ID and is_mentioned(message, OWNER_USER_ID):
+        if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
             await message.reply("Kenapa si Tag-tag")
 
     @client.event
