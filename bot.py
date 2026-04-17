@@ -28,18 +28,10 @@ class MyClient(discord.Client):
     async def setup_hook(self) -> None:
         register_general_commands(self.tree, self)
 
-        if GUILD_ID:
-            guild = discord.Object(id=GUILD_ID)
-            synced = await self.tree.sync(guild=guild)
+        guild = discord.Object(id=GUILD_ID)
+        synced = await self.tree.sync(guild=guild)
 
-            logger.info("✅ Synced %s guild command(s) to %s", len(synced), GUILD_ID)
-            logger.info("📜 Guild commands: %s", [command.name for command in synced])
-        else:
-            synced = await self.tree.sync()
-
-            logger.info("✅ Synced %s global command(s)", len(synced))
-            logger.info("📜 Global commands: %s", [command.name for command in synced])
-
+        logger.info("✅ Synced guild commands: %s", [cmd.name for cmd in synced])
 
 client = MyClient()
 

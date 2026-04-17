@@ -3,16 +3,20 @@ from typing import Optional
 import discord
 from discord import app_commands
 
+from config import GUILD_ID
 from utils.logger import send_log_embed, format_datetime, now_utc
 
 
+TEST_GUILD = discord.Object(id=GUILD_ID)
+
+
 def register_general_commands(tree: app_commands.CommandTree, client: discord.Client):
-    @tree.command(name="ping", description="Cek bot hidup")
+    @tree.command(name="ping", description="Cek bot hidup", guild=TEST_GUILD)
     async def ping(interaction: discord.Interaction) -> None:
         latency = round(client.latency * 1000)
         await interaction.response.send_message(f"🏓 Pong! ({latency}ms)")
 
-    @tree.command(name="serverinfo", description="Melihat informasi server")
+    @tree.command(name="serverinfo", description="Melihat informasi server", guild=TEST_GUILD)
     async def serverinfo(interaction: discord.Interaction) -> None:
         guild = interaction.guild
         if guild is None:
@@ -41,7 +45,7 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
         await interaction.response.send_message(embed=embed)
 
-    @tree.command(name="userinfo", description="Melihat informasi user")
+    @tree.command(name="userinfo", description="Melihat informasi user", guild=TEST_GUILD)
     @app_commands.describe(member="Member yang ingin dilihat (kosongkan untuk diri sendiri)")
     async def userinfo(
         interaction: discord.Interaction,
@@ -73,7 +77,7 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
         await interaction.response.send_message(embed=embed)
 
-    @tree.command(name="log", description="Test log manual")
+    @tree.command(name="log", description="Test log manual", guild=TEST_GUILD)
     async def log(interaction: discord.Interaction) -> None:
         await send_log_embed(
             client=client,
@@ -90,22 +94,29 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
             ephemeral=True,
         )
 
-    @tree.command(name="say", description="Bot akan mengatakan sesuatu")
+    @tree.command(name="say", description="Bot akan mengatakan sesuatu", guild=TEST_GUILD)
     @app_commands.describe(
         message="Pesan yang ingin dikirim",
-        user="Optional: mention user"
+        user="Optional: mention user",
     )
     async def say(
-            interaction: discord.Interaction,
-            message: str,
-            user: discord.Member = None
+        interaction: discord.Interaction,
+        message: str,
+        user: Optional[discord.Member] = None,
     ) -> None:
         content = f"{user.mention} {message}" if user else message
 
         embed = discord.Embed(
             description=content,
-            color=discord.Color.purple()
+            color=discord.Color.purple(),
         )
+
+        if interaction.channel is None:
+            await interaction.response.send_message(
+                "❌ Channel tidak ditemukan.",
+                ephemeral=True,
+            )
+            return
 
         await interaction.channel.send(embed=embed)
 
@@ -114,51 +125,25 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
             ephemeral=True,
         )
 
-    @tree.command(name="join", description="Bot join ke voice channel kamu")
+    @tree.command(name="join", description="Bot join ke voice channel kamu", guild=TEST_GUILD)
     async def join(interaction: discord.Interaction) -> None:
-        if not interaction.user.voice or not interaction.user.voice.channel:
+        await interaction.response.send_message("join command loaded", ephemeral=True)
+
+    @tree.command(name="leave", description="Bot keluar dari voice channel", guild=TEST_GUILD)
+    async def leave(interaction: discord.Interaction) -> None:
+        if interaction.guild is None:
             await interaction.response.send_message(
-                "❌ Kamu harus berada di voice channel!",
-                ephemeral=True
+                "❌ Command ini hanya bisa dipakai di server.",
+                ephemeral=True,
             )
             return
 
-        channel = interaction.user.voice.channel
-
-        try:
-            # kalau sudah connect, pindah channel
-            if interaction.guild.voice_client:
-                await interaction.guild.voice_client.move_to(channel)
-            else:
-                await channel.connect()
-
-            # set deaf (defend)
-            vc = interaction.guild.voice_client
-            await vc.guild.change_voice_state(
-                channel=channel,
-                self_deaf=True,
-                self_mute=True
-            )
-
-            await interaction.response.send_message(
-                f"🔊 Join ke {channel.name} (Deafened)",
-                ephemeral=True
-            )
-
-        except Exception as e:
-            await interaction.response.send_message(
-                f"❌ Gagal join: {e}",
-                ephemeral=True
-            )
-
-    @tree.command(name="leave", description="Bot keluar dari voice channel")
-    async def leave(interaction: discord.Interaction) -> None:
         vc = interaction.guild.voice_client
 
         if not vc:
             await interaction.response.send_message(
                 "❌ Bot tidak ada di voice channel!",
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
@@ -166,5 +151,5 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
         await interaction.response.send_message(
             "👋 Keluar dari voice channel",
-            ephemeral=True
+            ephemeral=True,
         )
