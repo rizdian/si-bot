@@ -113,3 +113,58 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
             "✅ Pesan berhasil dikirim!",
             ephemeral=True,
         )
+
+    @tree.command(name="join", description="Bot join ke voice channel kamu")
+    async def join(interaction: discord.Interaction) -> None:
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            await interaction.response.send_message(
+                "❌ Kamu harus berada di voice channel!",
+                ephemeral=True
+            )
+            return
+
+        channel = interaction.user.voice.channel
+
+        try:
+            # kalau sudah connect, pindah channel
+            if interaction.guild.voice_client:
+                await interaction.guild.voice_client.move_to(channel)
+            else:
+                await channel.connect()
+
+            # set deaf (defend)
+            vc = interaction.guild.voice_client
+            await vc.guild.change_voice_state(
+                channel=channel,
+                self_deaf=True,
+                self_mute=True
+            )
+
+            await interaction.response.send_message(
+                f"🔊 Join ke {channel.name} (Deafened)",
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Gagal join: {e}",
+                ephemeral=True
+            )
+
+    @tree.command(name="leave", description="Bot keluar dari voice channel")
+    async def leave(interaction: discord.Interaction) -> None:
+        vc = interaction.guild.voice_client
+
+        if not vc:
+            await interaction.response.send_message(
+                "❌ Bot tidak ada di voice channel!",
+                ephemeral=True
+            )
+            return
+
+        await vc.disconnect()
+
+        await interaction.response.send_message(
+            "👋 Keluar dari voice channel",
+            ephemeral=True
+        )
