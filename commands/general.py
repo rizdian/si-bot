@@ -127,7 +127,47 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
     @tree.command(name="join", description="Bot join ke voice channel kamu", guild=TEST_GUILD)
     async def join(interaction: discord.Interaction) -> None:
-        await interaction.response.send_message("join command loaded", ephemeral=True)
+        # pastikan di server
+        if interaction.guild is None:
+            await interaction.response.send_message(
+                "❌ Command ini hanya bisa dipakai di server.",
+                ephemeral=True
+            )
+            return
+
+        member = interaction.user
+
+        # pastikan user adalah member & ada di voice
+        if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
+            await interaction.response.send_message(
+                "❌ Kamu harus berada di voice channel!",
+                ephemeral=True
+            )
+            return
+
+        channel = member.voice.channel
+
+        try:
+            vc = interaction.guild.voice_client
+
+            # kalau sudah connect → pindah channel
+            if vc and vc.is_connected():
+                await vc.move_to(channel)
+                await vc.edit(deafen=True)
+            else:
+                # connect + langsung deaf
+                vc = await channel.connect(self_deaf=True)
+
+            await interaction.response.send_message(
+                f"🔊 Join ke **{channel.name}** (Deafened)",
+                ephemeral=True
+            )
+
+        except Exception as e:
+            await interaction.response.send_message(
+                f"❌ Gagal join voice: {e}",
+                ephemeral=True
+            )
 
     @tree.command(name="leave", description="Bot keluar dari voice channel", guild=TEST_GUILD)
     async def leave(interaction: discord.Interaction) -> None:
