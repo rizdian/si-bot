@@ -16,38 +16,38 @@ def register_message_events(client: discord.Client):
         if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
             await message.reply("Kenapa si Tag-tag")
 
-    @client.event
-    async def on_message_delete(message: discord.Message) -> None:
-        if message.author.bot:
-            return
+    # @client.event
+    # async def on_message_delete(message: discord.Message) -> None:
+    #     if message.author.bot:
+    #         return
+    #
+    #     await send_log_embed(
+    #         client=client,
+    #         title="🗑 MESSAGE DELETED",
+    #         color=discord.Color.red(),
+    #         fields=[
+    #             ("👤 Author", message.author.mention, False),
+    #             ("📍 Channel", message.channel.mention, True),
+    #             ("💬 Content", message.content or "[Empty/Embed]", False),
+    #         ],
+    #     )
 
-        await send_log_embed(
-            client=client,
-            title="🗑 MESSAGE DELETED",
-            color=discord.Color.red(),
-            fields=[
-                ("👤 Author", message.author.mention, False),
-                ("📍 Channel", message.channel.mention, True),
-                ("💬 Content", message.content or "[Empty/Embed]", False),
-            ],
-        )
-
-    @client.event
-    async def on_message_edit(before: discord.Message, after: discord.Message) -> None:
-        if before.author.bot:
-            return
-
-        if before.content == after.content:
-            return
-
-        await send_log_embed(
-            client=client,
-            title="✏ MESSAGE EDITED",
-            color=discord.Color.blue(),
-            fields=[
-                ("👤 Author", before.author.mention, False),
-                ("📍 Channel", before.channel.mention, True),
-                ("📌 Before", before.content or "[Empty]", False),
-                ("📌 After", after.content or "[Empty]", False),
-            ],
-        )
+    # @client.event
+    # async def on_message_edit(before: discord.Message, after: discord.Message) -> None:
+    #     if before.author.bot:
+    #         return
+    #
+    #     if before.content == after.content:
+    #         return
+    #
+    #     await send_log_embed(
+    #         client=client,
+    #         title="✏ MESSAGE EDITED",
+    #         color=discord.Color.blue(),
+    #         fields=[
+    #             ("👤 Author", before.author.mention, False),
+    #             ("📍 Channel", before.channel.mention, True),
+    #             ("📌 Before", before.content or "[Empty]", False),
+    #             ("📌 After", after.content or "[Empty]", False),
+    #         ],
+    #     )
