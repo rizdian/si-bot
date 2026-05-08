@@ -93,6 +93,17 @@ def register_member_events(client: discord.Client):
             role = guild.get_role(role_id)
             if role:
                 try:
+                    # Cek izin bot untuk mengelola role
+                    bot_member = guild.me
+                    if not bot_member.guild_permissions.manage_roles:
+                        logger.error(f"Gagal memberikan role: Bot tidak memiliki izin 'Manage Roles'.")
+                        return
+
+                    # Cek hierarki role
+                    if role >= bot_member.top_role:
+                        logger.error(f"Gagal memberikan role: Role '{role.name}' berada di atas atau sama dengan role tertinggi bot. Pindahkan role bot ke atas '{role.name}' di Server Settings.")
+                        return
+
                     await member.add_roles(role)
                     logger.info(f"Berhasil memberikan role {role.name} ke {member.display_name}")
                 except Exception as e:

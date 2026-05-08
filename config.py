@@ -44,8 +44,8 @@ AI_PERSONALITY = os.getenv(
 
 WELCOME_PROMPT = os.getenv(
     "WELCOME_PROMPT",
-    "Sambut member baru bernama {name} yang baru join ke server kita (I Do Not Sleep) Nama Server nya."
+    "Sambut member baru bernama {name} yang baru join ke server I Do Not Sleep"
     "Jangan lupa tag/mention orangnya dengan {mention}. "
     "Ucapkan selamat datang dengan cara yang warm dan casual, buat hanya dalam 1 baris."
-    "Tambahan 'Silahkan Tunggu di kasih Role sama moderator'"
+    "Lalu Tambahan 'Silahkan Pilih Role dibawah ini' di line baru'"
 )
