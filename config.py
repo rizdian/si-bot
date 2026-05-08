@@ -21,6 +21,10 @@ LOG_CHANNEL_ID = get_env_int("LOG_CHANNEL_ID")
 OWNER_USER_ID = get_env_int("OWNER_USER_ID")
 GUILD_ID = get_env_int("GUILD_ID")
 WELCOME_CHANNEL_ID = get_env_int("WELCOME_CHANNEL_ID")
+ROLE_BOYS_ID = get_env_int("ROLE_BOYS_ID")
+ROLE_GIRLS_ID = get_env_int("ROLE_GIRLS_ID")
+EMOJI_BOY = "👦"
+EMOJI_GIRL = "👧"
 
 OPENROUTER_API_KEY = os.getenv("API_KEY_AI")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
@@ -40,7 +44,8 @@ AI_PERSONALITY = os.getenv(
 
 WELCOME_PROMPT = os.getenv(
     "WELCOME_PROMPT",
-    "Sambut member baru bernama {name} yang baru join ke server kita. "
+    "Sambut member baru bernama {name} yang baru join ke server kita (I Do Not Sleep) Nama Server nya."
     "Jangan lupa tag/mention orangnya dengan {mention}. "
     "Ucapkan selamat datang dengan cara yang warm dan casual, buat hanya dalam 1 baris."
+    "Tambahan 'Silahkan Tunggu di kasih Role sama moderator'"
 )

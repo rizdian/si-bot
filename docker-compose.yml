@@ -10,4 +10,6 @@ services:
       - API_KEY_AI
       - OPENROUTER_MODEL
       - WELCOME_CHANNEL_ID
+      - ROLE_BOYS_ID
+      - ROLE_GIRLS_ID
     restart: unless-stopped
