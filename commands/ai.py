@@ -11,22 +11,15 @@ logger = logging.getLogger("bot")
 TEST_GUILD = discord.Object(id=GUILD_ID)
 
 
-async def ask_openrouter(prompt: str, context: str = None) -> str:
+async def ask_openrouter(messages: list) -> str:
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
     
-    system_content = AI_PERSONALITY
-    if context:
-        system_content += f"\n\nKonteks tambahan tentang member yang di-mention:\n{context}"
-        
     payload = {
         "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": system_content},
-            {"role": "user", "content": prompt},
-        ],
+        "messages": messages,
     }
 
     async with aiohttp.ClientSession() as session:
@@ -59,15 +52,28 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
         await interaction.response.defer(thinking=True)
 
         try:
-            # Deteksi member yang di-mention
-            mentions = interaction.message.mentions if interaction.message else []
-            # Namun pada slash command, interaction.message biasanya None.
-            # Kita perlu mengekstrak dari prompt atau menggunakan app_commands.User jika ingin lebih eksplisit.
-            # Tapi user ingin "kalo tag member", jadi kita asumsikan lewat string prompt.
+            # Ambil riwayat pesan (misal 5 pesan terakhir)
+            history = []
+            async for msg in interaction.channel.history(limit=5):
+                if msg.author.bot:
+                    if msg.author.id == client.user.id:
+                        # Jika pesan bot memiliki embed (hasil /chat sebelumnya), ambil isinya
+                        if msg.embeds:
+                            for embed in msg.embeds:
+                                for field in embed.fields:
+                                    if field.name == "🧠 Jawaban":
+                                        history.append({"role": "assistant", "content": field.value})
+                        else:
+                            history.append({"role": "assistant", "content": msg.content})
+                else:
+                    # Bersihkan prompt jika ada tag bot (biasanya tidak ada di slash command tapi untuk jaga-jaga)
+                    content = msg.content
+                    history.append({"role": "user", "content": content})
             
+            # Balik urutan agar kronologis (lama ke baru)
+            history.reverse()
+
             context_parts = []
-            
-            # Cari mention format <@ID> atau <@!ID> dalam prompt
             import re
             user_ids = re.findall(r"<@!?(\d+)>", prompt)
             
@@ -91,8 +97,19 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
                     
                     context_parts.append(f"- {member.display_name} (ID: {user_id}) adalah seorang {category}.")
 
-            context = "\n".join(context_parts) if context_parts else None
-            reply = await ask_openrouter(prompt, context)
+            system_content = AI_PERSONALITY
+            if context_parts:
+                context = "\n".join(context_parts)
+                system_content += f"\n\nKonteks tambahan tentang member yang di-mention:\n{context}"
+
+            messages = [{"role": "system", "content": system_content}]
+            messages.extend(history)
+            
+            # Tambahkan prompt terbaru jika belum masuk di history (interaction.channel.history mungkin belum mencatat slash command ini)
+            # Karena /chat adalah slash command, pesannya belum ada di channel history saat diproses.
+            messages.append({"role": "user", "content": prompt})
+
+            reply = await ask_openrouter(messages)
 
             if len(reply) <= 4096:
                 embed = discord.Embed(
