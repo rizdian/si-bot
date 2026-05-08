@@ -1,4 +1,6 @@
 import logging
+import asyncio
+import time
 
 import discord
 from discord import app_commands
@@ -55,7 +57,26 @@ def main() -> None:
         raise ValueError("❌ DISCORD_TOKEN tidak ditemukan di .env")
 
     logger.info("🚀 Starting bot...")
-    client.run(TOKEN)
+    
+    max_retries = 5
+    retry_delay = 5  # Start with 5 seconds
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            client.run(TOKEN)
+            break  # Exit loop if client runs successfully (though run() is blocking until logout)
+        except (discord.errors.DiscordServerError, discord.errors.HTTPException) as e:
+            if attempt < max_retries:
+                logger.warning(f"⚠️ Discord server error (attempt {attempt}/{max_retries}): {e}")
+                logger.info(f"🔄 Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"❌ Failed to login after {max_retries} attempts: {e}")
+                raise
+        except Exception as e:
+            logger.error(f"❌ Unexpected error during startup: {e}")
+            raise
 
 
 if __name__ == "__main__":
