@@ -22,7 +22,10 @@ def register_message_events(client: discord.Client):
             history = []
             async for msg in message.channel.history(limit=5, before=message):
                 role = "assistant" if msg.author.id == client.user.id else "user"
-                history.append({"role": role, "content": msg.content})
+                # Sertakan nama pengirim untuk konteks
+                author_name = msg.author.display_name
+                content = f"{author_name}: {msg.content}" if role == "user" else msg.content
+                history.append({"role": role, "content": content})
             history.reverse()
 
             prompt = message.content
@@ -50,16 +53,17 @@ def register_message_events(client: discord.Client):
                 # Bersihkan tag bot dari history jika ada
                 content = re.sub(r'<@!?%s>' % client.user.id, '', content).strip()
                 if content:
-                    history.append({"role": role, "content": content})
+                    # Sertakan nama pengirim untuk konteks agar bot tau siapa ngomong apa
+                    author_name = msg.author.display_name
+                    formatted_content = f"{author_name}: {content}" if role == "user" else content
+                    history.append({"role": role, "content": formatted_content})
             history.reverse()
 
             # Bersihkan tag bot dari konten saat ini
             prompt = message.content
             prompt = re.sub(r'<@!?%s>' % client.user.id, '', prompt).strip()
-            
-            # Jika pesan kosong setelah tag dihapus, beri prompt default
-            if not prompt:
-                prompt = "Halo"
+            # Sertakan nama pengirim saat ini juga
+            prompt_with_author = f"{message.author.display_name}: {prompt}" if prompt else "Halo"
 
             # Ambil konteks jika ada mention lain
             context_parts = []
@@ -89,7 +93,7 @@ def register_message_events(client: discord.Client):
 
             messages = [{"role": "system", "content": system_content}]
             messages.extend(history)
-            messages.append({"role": "user", "content": prompt})
+            messages.append({"role": "user", "content": prompt_with_author})
             
             async with message.channel.typing():
                 reply = await ask_openrouter(messages)
