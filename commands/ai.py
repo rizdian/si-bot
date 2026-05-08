@@ -4,7 +4,7 @@ import aiohttp
 import discord
 from discord import app_commands
 
-from config import GUILD_ID, OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+from config import GUILD_ID, OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL, AI_PERSONALITY
 
 logger = logging.getLogger("bot")
 
@@ -19,7 +19,7 @@ async def ask_openrouter(prompt: str) -> str:
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": [
-            {"role": "system", "content": "Kamu adalah asisten AI yang membantu dan ramah. Jawab dalam bahasa yang sama dengan pertanyaan user."},
+            {"role": "system", "content": AI_PERSONALITY},
             {"role": "user", "content": prompt},
         ],
     }
