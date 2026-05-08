@@ -83,6 +83,18 @@ def register_member_events(client: discord.Client):
         if not member:
             return
 
+        # Validasi: Hanya bisa reaction sekali
+        # Jika member sudah punya role Boys atau Girls, jangan proses dan hapus reaction-nya
+        has_boy_role = any(r.id == ROLE_BOYS_ID for r in member.roles)
+        has_girl_role = any(r.id == ROLE_GIRLS_ID for r in member.roles)
+        
+        if has_boy_role or has_girl_role:
+            try:
+                await message.remove_reaction(payload.emoji, discord.Object(id=payload.user_id))
+            except Exception:
+                pass
+            return
+
         role_id = None
         if str(payload.emoji) == EMOJI_BOY:
             role_id = ROLE_BOYS_ID
