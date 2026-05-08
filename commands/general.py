@@ -107,6 +107,37 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
         await interaction.response.send_message(embed=embed)
 
+    @tree.command(name="banner", description="Melihat banner user", guild=TEST_GUILD)
+    @app_commands.describe(member="Member yang ingin dilihat bannernya (kosongkan untuk diri sendiri)")
+    async def banner(
+        interaction: discord.Interaction,
+        member: Optional[discord.Member] = None,
+    ) -> None:
+        target = member or interaction.user
+
+        # Defer response as fetch_user is an API call
+        await interaction.response.defer()
+
+        try:
+            # fetch_user to get the banner
+            user = await client.fetch_user(target.id)
+        except discord.HTTPException:
+            await interaction.followup.send("❌ Gagal mengambil data user.")
+            return
+
+        embed = discord.Embed(
+            title=f"🖼️ Banner {user.name}",
+            color=target.color if isinstance(target, discord.Member) and target.color != discord.Color.default() else discord.Color.blue(),
+            timestamp=now_utc(),
+        )
+
+        if user.banner:
+            embed.set_image(url=user.banner.url)
+        else:
+            embed.description = "User ini tidak memiliki banner."
+
+        await interaction.followup.send(embed=embed)
+
     @tree.command(name="log", description="Test log manual", guild=TEST_GUILD)
     async def log(interaction: discord.Interaction) -> None:
         await send_log_embed(
