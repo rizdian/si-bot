@@ -11,15 +11,20 @@ logger = logging.getLogger("bot")
 TEST_GUILD = discord.Object(id=GUILD_ID)
 
 
-async def ask_openrouter(prompt: str) -> str:
+async def ask_openrouter(prompt: str, context: str = None) -> str:
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
+    
+    system_content = AI_PERSONALITY
+    if context:
+        system_content += f"\n\nKonteks tambahan tentang member yang di-mention:\n{context}"
+        
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": [
-            {"role": "system", "content": AI_PERSONALITY},
+            {"role": "system", "content": system_content},
             {"role": "user", "content": prompt},
         ],
     }
@@ -54,7 +59,40 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
         await interaction.response.defer(thinking=True)
 
         try:
-            reply = await ask_openrouter(prompt)
+            # Deteksi member yang di-mention
+            mentions = interaction.message.mentions if interaction.message else []
+            # Namun pada slash command, interaction.message biasanya None.
+            # Kita perlu mengekstrak dari prompt atau menggunakan app_commands.User jika ingin lebih eksplisit.
+            # Tapi user ingin "kalo tag member", jadi kita asumsikan lewat string prompt.
+            
+            context_parts = []
+            
+            # Cari mention format <@ID> atau <@!ID> dalam prompt
+            import re
+            user_ids = re.findall(r"<@!?(\d+)>", prompt)
+            
+            for user_id in set(user_ids):
+                member = interaction.guild.get_member(int(user_id))
+                if not member:
+                    try:
+                        member = await interaction.guild.fetch_member(int(user_id))
+                    except:
+                        continue
+                
+                if member:
+                    roles = [role.name.lower() for role in member.roles]
+                    category = "umum"
+                    if any("mod" in r for r in roles) or any("admin" in r for r in roles):
+                        category = "moderator"
+                    elif any("boy" in r for r in roles):
+                        category = "boys"
+                    elif any("girl" in r for r in roles):
+                        category = "girls"
+                    
+                    context_parts.append(f"- {member.display_name} (ID: {user_id}) adalah seorang {category}.")
+
+            context = "\n".join(context_parts) if context_parts else None
+            reply = await ask_openrouter(prompt, context)
 
             if len(reply) <= 4096:
                 embed = discord.Embed(
