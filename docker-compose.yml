@@ -8,4 +8,5 @@ services:
       - OWNER_USER_ID
       - GUILD_ID
       - API_KEY_AI
+      - OPENROUTER_MODEL
     restart: unless-stopped
