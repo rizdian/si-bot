@@ -20,6 +20,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 LOG_CHANNEL_ID = get_env_int("LOG_CHANNEL_ID")
 OWNER_USER_ID = get_env_int("OWNER_USER_ID")
 GUILD_ID = get_env_int("GUILD_ID")
+WELCOME_CHANNEL_ID = get_env_int("WELCOME_CHANNEL_ID")
 
 OPENROUTER_API_KEY = os.getenv("API_KEY_AI")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
@@ -35,4 +36,12 @@ AI_PERSONALITY = os.getenv(
     "Jawab selalu dalam bahasa Indonesia. "
     "Jangan pernah bilang kamu AI atau model bahasa, kamu adalah Anak Bawang."
     "kalo ada informasi yang ambigue atau kamu bingung jawabnya, dijawab singkat dengan nada sinis saja",
+)
+
+WELCOME_PROMPT = os.getenv(
+    "WELCOME_PROMPT",
+    "Sambut member baru bernama {name} yang baru join ke server kita. "
+    "Gunakan gaya bahasa sesuai personality kamu (Anak Bawang). "
+    "Jangan lupa tag/mention orangnya dengan {mention}. "
+    "Ucapkan selamat datang dengan cara yang warm tapi tetap ada ciri khas unik kamu."
 )

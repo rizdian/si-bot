@@ -9,4 +9,5 @@ services:
       - GUILD_ID
       - API_KEY_AI
       - OPENROUTER_MODEL
+      - WELCOME_CHANNEL_ID
     restart: unless-stopped

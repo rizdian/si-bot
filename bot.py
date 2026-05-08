@@ -45,7 +45,7 @@ async def on_ready() -> None:
     logger.info("🏠 Guild ID: %s", GUILD_ID)
 
 
-# register_member_events(client)
+register_member_events(client)
 register_message_events(client)
 
 
