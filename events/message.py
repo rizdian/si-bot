@@ -42,9 +42,9 @@ def register_message_events(client: discord.Client):
         if client.user and client.user.mentioned_in(message):
             from commands.ai import ask_openrouter
             
-            # Ambil riwayat pesan (misal 5 pesan terakhir sebelum pesan ini)
+            # Ambil riwayat pesan (misal 10 pesan terakhir sebelum pesan ini)
             history = []
-            async for msg in message.channel.history(limit=5, before=message):
+            async for msg in message.channel.history(limit=10, before=message):
                 role = "assistant" if msg.author.id == client.user.id else "user"
                 content = msg.content
                 # Bersihkan tag bot dari history jika ada
