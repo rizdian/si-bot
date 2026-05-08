@@ -7,4 +7,5 @@ services:
       - LOG_CHANNEL_ID
       - OWNER_USER_ID
       - GUILD_ID
+      - API_KEY_AI
     restart: unless-stopped
