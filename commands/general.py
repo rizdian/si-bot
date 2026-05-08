@@ -77,6 +77,36 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
         await interaction.response.send_message(embed=embed)
 
+    @tree.command(name="avatar", description="Melihat avatar user", guild=TEST_GUILD)
+    @app_commands.describe(member="Member yang ingin dilihat avatarnya (kosongkan untuk diri sendiri)")
+    async def avatar(
+        interaction: discord.Interaction,
+        member: Optional[discord.Member] = None,
+    ) -> None:
+        target = member or interaction.user
+
+        if not isinstance(target, discord.Member):
+            await interaction.response.send_message(
+                "❌ Gagal mengambil data member.",
+                ephemeral=True,
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"🖼️ Avatar {target.name}",
+            color=target.color if target.color != discord.Color.default() else discord.Color.blue(),
+            timestamp=now_utc(),
+        )
+
+        if target.avatar:
+            embed.set_image(url=target.avatar.url)
+            # Opsional: tambahkan link download atau link ke avatar
+            # embed.description = f"[Link Avatar]({target.avatar.url})"
+        else:
+            embed.description = "User ini tidak memiliki avatar."
+
+        await interaction.response.send_message(embed=embed)
+
     @tree.command(name="log", description="Test log manual", guild=TEST_GUILD)
     async def log(interaction: discord.Interaction) -> None:
         await send_log_embed(
