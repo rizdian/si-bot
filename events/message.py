@@ -30,8 +30,16 @@ def register_message_events(client: discord.Client):
             history_text = "\n".join(history_lines) if history_lines else "Gak ada obrolan sebelumnya."
 
             prompt = message.content
+            
+            # Tambahkan info tentang pengirim dan target mention untuk tag
+            author_info = f"- {message.author.display_name} (ID: {message.author.id})"
+            # Karena ini mention owner, tambahkan info owner juga
+            owner_member = message.guild.get_member(OWNER_USER_ID) if message.guild else None
+            owner_name = owner_member.display_name if owner_member else "Owner"
+            owner_info = f"- {owner_name} (ID: {OWNER_USER_ID})"
+
             # Tambahkan instruksi khusus agar jawaban hanya 1 kalimat
-            instruction = f"\n\n(Catatan: Jawab pesan ini hanya dalam 1 kalimat saja karena kamu sedang menanggapi mention ke Owner. Ini histori singkatnya:\n{history_text})"
+            instruction = f"\n\n(Catatan: Jawab pesan ini hanya dalam 1 kalimat saja karena kamu sedang menanggapi mention ke Owner. Ini histori singkatnya:\n{history_text}\n\nKonteks User:\n{author_info}\n{owner_info})"
             
             messages = [
                 {"role": "system", "content": AI_PERSONALITY},
@@ -69,6 +77,9 @@ def register_message_events(client: discord.Client):
 
             # Ambil konteks jika ada mention lain
             context_parts = []
+            # Tambahkan info tentang pengirim pesan saat ini
+            context_parts.append(f"- {message.author.display_name} (ID: {message.author.id}) adalah pengirim pesan saat ini.")
+            
             user_ids = re.findall(r"<@!?(\d+)>", prompt)
             
             for user_id in set(user_ids):

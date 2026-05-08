@@ -74,6 +74,9 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             history.reverse()
 
             context_parts = []
+            # Tambahkan info tentang pengirim pesan saat ini
+            context_parts.append(f"- {interaction.user.display_name} (ID: {interaction.user.id}) adalah pengirim pesan saat ini.")
+            
             import re
             user_ids = re.findall(r"<@!?(\d+)>", prompt)
             
