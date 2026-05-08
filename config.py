@@ -41,7 +41,6 @@ AI_PERSONALITY = os.getenv(
 WELCOME_PROMPT = os.getenv(
     "WELCOME_PROMPT",
     "Sambut member baru bernama {name} yang baru join ke server kita. "
-    "Gunakan gaya bahasa sesuai personality kamu (Anak Bawang). "
     "Jangan lupa tag/mention orangnya dengan {mention}. "
-    "Ucapkan selamat datang dengan cara yang warm tapi tetap ada ciri khas unik kamu."
+    "Ucapkan selamat datang dengan cara yang warm dan casual, buat hanya dalam 1 baris."
 )
