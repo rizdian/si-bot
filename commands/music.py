@@ -41,8 +41,11 @@ ytdl_format_options = {
 
 # Load cookies if available to avoid bot detection
 if os.path.exists('cookies.txt'):
-    ytdl_format_options['cookiefile'] = 'cookies.txt'
-    logger.info("🍪 Cookies loaded from cookies.txt")
+    if os.path.isfile('cookies.txt'):
+        ytdl_format_options['cookiefile'] = 'cookies.txt'
+        logger.info("🍪 Cookies loaded from cookies.txt")
+    else:
+        logger.error("❌ 'cookies.txt' ditemukan tetapi berupa FOLDER, bukan FILE. Harap hapus folder tersebut di server host.")
 else:
     logger.warning("⚠️ cookies.txt not found. YouTube might block requests.")
 
