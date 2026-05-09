@@ -13,5 +13,3 @@ services:
       - ROLE_BOYS_ID
       - ROLE_GIRLS_ID
     restart: unless-stopped
-    volumes:
-      - ./cookies.txt:/app/cookies.txt:ro
