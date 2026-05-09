@@ -22,7 +22,7 @@ def register_member_events(client: discord.Client):
         #     ],
         # )
 
-        # 2. Auto Welcome Message with AI
+        # 2. Auto Welcome Message with Langit
         if WELCOME_CHANNEL_ID:
             channel = client.get_channel(WELCOME_CHANNEL_ID)
             if not channel:
@@ -46,7 +46,7 @@ def register_member_events(client: discord.Client):
                     await msg.add_reaction(EMOJI_BOY)
                     await msg.add_reaction(EMOJI_GIRL)
                 except Exception as e:
-                    logger.error(f"Gagal mengirim welcome message AI: {e}")
+                    logger.error(f"Gagal mengirim welcome message Langit: {e}")
 
     @client.event
     async def on_raw_reaction_add(payload: discord.RawReactionActionEvent) -> None:

@@ -6,9 +6,11 @@ from spotipy.oauth2 import SpotifyClientCredentials
 from discord import app_commands
 from typing import Optional
 import logging
-from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, GUILD_ID
 
 logger = logging.getLogger("bot")
+
+TEST_GUILD = discord.Object(id=GUILD_ID)
 
 # Konfigurasi yt-dlp
 ytdl_format_options = {
@@ -102,7 +104,7 @@ def get_player(interaction: discord.Interaction):
     return players[interaction.guild_id]
 
 def register_music_commands(tree: app_commands.CommandTree, client: discord.Client):
-    @tree.command(name="play", description="Putar musik dari YouTube, Spotify, atau cari berdasarkan judul")
+    @tree.command(name="play", description="Putar musik dari YouTube, Spotify, atau cari berdasarkan judul", guild=TEST_GUILD)
     @app_commands.describe(search="URL YouTube/Spotify atau judul lagu")
     async def play(interaction: discord.Interaction, search: str):
         await interaction.response.defer()
@@ -156,7 +158,7 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
             logger.error(f"Play error: {e}")
             await interaction.followup.send(f"❌ Error pas mau muter: {e}")
 
-    @tree.command(name="skip", description="Lewatin lagu yang lagi diputar")
+    @tree.command(name="skip", description="Lewatin lagu yang lagi diputar", guild=TEST_GUILD)
     async def skip(interaction: discord.Interaction):
         if not interaction.guild.voice_client or not interaction.guild.voice_client.is_playing():
             return await interaction.response.send_message("❌ Kagak ada lagu yang lagi diputar, skip apaan?")
@@ -164,7 +166,29 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
         interaction.guild.voice_client.stop()
         await interaction.response.send_message("⏭️ Oke, skip!")
 
-    @tree.command(name="stop", description="Berhentiin musik dan bot keluar dari voice channel")
+    @tree.command(name="pause", description="Jeda musik yang lagi diputar", guild=TEST_GUILD)
+    async def pause(interaction: discord.Interaction):
+        if not interaction.guild.voice_client or not interaction.guild.voice_client.is_playing():
+            return await interaction.response.send_message("❌ Kagak ada lagu yang lagi diputar, mau nge-pause apaan?")
+        
+        if interaction.guild.voice_client.is_paused():
+            return await interaction.response.send_message("⚠️ Musiknya emang udah di-pause, gimana sih.")
+
+        interaction.guild.voice_client.pause()
+        await interaction.response.send_message("⏸️ Oke, gue jeda dulu ya.")
+
+    @tree.command(name="resume", description="Lanjutin musik yang lagi di-pause", guild=TEST_GUILD)
+    async def resume(interaction: discord.Interaction):
+        if not interaction.guild.voice_client:
+            return await interaction.response.send_message("❌ Gue aja kagak ada di voice channel...")
+
+        if not interaction.guild.voice_client.is_paused():
+            return await interaction.response.send_message("❌ Musiknya kagak lagi di-pause, kocak.")
+
+        interaction.guild.voice_client.resume()
+        await interaction.response.send_message("▶️ Gas lagi!")
+
+    @tree.command(name="stop", description="Berhentiin musik dan bot keluar dari voice channel", guild=TEST_GUILD)
     async def stop(interaction: discord.Interaction):
         if not interaction.guild.voice_client:
             return await interaction.response.send_message("❌ Gue aja kagak di voice channel...")
@@ -178,7 +202,7 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
         await interaction.guild.voice_client.disconnect()
         await interaction.response.send_message("👋 Cabut dulu ya, mager.")
 
-    @tree.command(name="queue", description="Lihat antrean lagu")
+    @tree.command(name="queue", description="Lihat antrean lagu", guild=TEST_GUILD)
     async def queue(interaction: discord.Interaction):
         if interaction.guild_id not in players or players[interaction.guild_id].queue.empty():
             return await interaction.response.send_message("📭 Antrean kosong, kayak hati lu.")

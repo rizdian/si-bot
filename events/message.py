@@ -14,7 +14,7 @@ def register_message_events(client: discord.Client):
         if message.author.bot:
             return
 
-        # Logika untuk Owner Tag (AI menjawab 1 kalimat)
+        # Logika untuk Owner Tag (Langit menjawab 1 kalimat)
         if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
             from commands.ai import ask_openrouter
             
@@ -47,11 +47,11 @@ def register_message_events(client: discord.Client):
             ]
 
             async with message.channel.typing():
-                reply = await ask_openrouter(messages)
+                reply = await ask_openrouter(client.ai_session, messages)
                 await message.reply(reply)
-            return  # Berhenti di sini agar tidak memicu logika AI bot tag di bawah jika bot juga di-tag
+            return  # Berhenti di sini agar tidak memicu logika Langit bot tag di bawah jika bot juga di-tag
 
-        # Logika AI jika bot di-tag
+        # Logika Langit jika bot di-tag
         if client.user and client.user.mentioned_in(message):
             from commands.ai import ask_openrouter
             
@@ -113,7 +113,7 @@ def register_message_events(client: discord.Client):
             ]
             
             async with message.channel.typing():
-                reply = await ask_openrouter(messages)
+                reply = await ask_openrouter(client.ai_session, messages)
                 await message.reply(reply)
 
     # @client.event

@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import time
+import aiohttp
 
 import discord
 from discord import app_commands
@@ -28,8 +29,10 @@ class MyClient(discord.Client):
     def __init__(self) -> None:
         super().__init__(intents=intents)
         self.tree = app_commands.CommandTree(self)
+        self.ai_session: aiohttp.ClientSession = None
 
     async def setup_hook(self) -> None:
+        self.ai_session = aiohttp.ClientSession()
         register_general_commands(self.tree, self)
         register_ai_commands(self.tree, self)
         register_music_commands(self.tree, self)
@@ -38,6 +41,12 @@ class MyClient(discord.Client):
         guild = discord.Object(id=GUILD_ID)
         synced = await self.tree.sync(guild=guild)
         logger.info("✅ Synced guild commands: %s", [cmd.name for cmd in synced])
+
+    async def close(self) -> None:
+        if self.ai_session:
+            await self.ai_session.close()
+            logger.info("🛑 Langit ClientSession closed.")
+        await super().close()
 
         # Global sync (opsional, uncomment jika ingin global)
         # await self.tree.sync()

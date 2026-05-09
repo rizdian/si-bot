@@ -1,4 +1,6 @@
 import logging
+import re
+import asyncio
 
 import aiohttp
 import discord
@@ -11,7 +13,7 @@ logger = logging.getLogger("bot")
 TEST_GUILD = discord.Object(id=GUILD_ID)
 
 
-async def ask_openrouter(messages: list) -> str:
+async def ask_openrouter(session: aiohttp.ClientSession, messages: list) -> str:
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
@@ -22,25 +24,24 @@ async def ask_openrouter(messages: list) -> str:
         "messages": messages,
     }
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post(OPENROUTER_BASE_URL, headers=headers, json=payload) as resp:
-            data = await resp.json()
+    async with session.post(OPENROUTER_BASE_URL, headers=headers, json=payload) as resp:
+        data = await resp.json()
 
-            if resp.status != 200:
-                error_msg = data.get("error", {}).get("message", "Unknown error")
-                logger.error("OpenRouter API error: %s", error_msg)
-                return f"❌ Gagal mendapatkan respons dari AI: {error_msg}"
+        if resp.status != 200:
+            error_msg = data.get("error", {}).get("message", "Unknown error")
+            logger.error("OpenRouter API error: %s", error_msg)
+            return f"❌ Gagal mendapatkan respons dari Langit: {error_msg}"
 
-            choices = data.get("choices", [])
-            if not choices:
-                return "❌ AI tidak memberikan respons."
+        choices = data.get("choices", [])
+        if not choices:
+            return "❌ Langit tidak memberikan respons."
 
-            return choices[0]["message"]["content"]
+        return choices[0]["message"]["content"]
 
 
 def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client):
-    @tree.command(name="chat", description="Tanya AI menggunakan OpenRouter", guild=TEST_GUILD)
-    @app_commands.describe(prompt="Pertanyaan atau pesan untuk AI")
+    @tree.command(name="chat", description="Tanya Langit menggunakan OpenRouter", guild=TEST_GUILD)
+    @app_commands.describe(prompt="Pertanyaan atau pesan untuk Langit")
     async def chat(interaction: discord.Interaction, prompt: str) -> None:
         if not OPENROUTER_API_KEY:
             await interaction.response.send_message(
@@ -52,9 +53,13 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
         await interaction.response.defer(thinking=True)
 
         try:
-            # Ambil riwayat pesan (misal 5 pesan terakhir)
+            # Ambil riwayat pesan (misal 5 pesan terakhir) secara paralel
             history = []
+            history_tasks = []
             async for msg in interaction.channel.history(limit=5):
+                history_tasks.append(msg)
+            
+            for msg in history_tasks:
                 if msg.author.bot:
                     if msg.author.id == client.user.id:
                         # Jika pesan bot memiliki embed (hasil /chat sebelumnya), ambil isinya
@@ -77,28 +82,31 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             # Tambahkan info tentang pengirim pesan saat ini
             context_parts.append(f"- {interaction.user.display_name} (ID: {interaction.user.id}) adalah pengirim pesan saat ini.")
             
-            import re
             user_ids = re.findall(r"<@!?(\d+)>", prompt)
             
+            mention_tasks = []
             for user_id in set(user_ids):
-                member = interaction.guild.get_member(int(user_id))
+                user_id_int = int(user_id)
+                member = interaction.guild.get_member(user_id_int)
                 if not member:
-                    try:
-                        member = await interaction.guild.fetch_member(int(user_id))
-                    except:
-                        continue
-                
-                if member:
-                    roles = [role.name.lower() for role in member.roles]
-                    category = "umum"
-                    if any("mod" in r for r in roles) or any("admin" in r for r in roles):
-                        category = "moderator"
-                    elif any("boy" in r for r in roles):
-                        category = "boys"
-                    elif any("girl" in r for r in roles):
-                        category = "girls"
-                    
-                    context_parts.append(f"- {member.display_name} (ID: {user_id}) adalah seorang {category}.")
+                    mention_tasks.append(interaction.guild.fetch_member(user_id_int))
+                else:
+                    mention_tasks.append(asyncio.sleep(0, result=member))
+
+            if mention_tasks:
+                members = await asyncio.gather(*mention_tasks, return_exceptions=True)
+                for member in members:
+                    if isinstance(member, discord.Member):
+                        roles = [role.name.lower() for role in member.roles]
+                        category = "umum"
+                        if any("mod" in r for r in roles) or any("admin" in r for r in roles):
+                            category = "moderator"
+                        elif any("boy" in r for r in roles):
+                            category = "boys"
+                        elif any("girl" in r for r in roles):
+                            category = "girls"
+                        
+                        context_parts.append(f"- {member.display_name} (ID: {member.id}) adalah seorang {category}.")
 
             system_content = AI_PERSONALITY
             if context_parts:
@@ -112,11 +120,11 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             # Karena /chat adalah slash command, pesannya belum ada di channel history saat diproses.
             messages.append({"role": "user", "content": prompt})
 
-            reply = await ask_openrouter(messages)
+            reply = await ask_openrouter(client.ai_session, messages)
 
             if len(reply) <= 4096:
                 embed = discord.Embed(
-                    title="🤖 AI Chat",
+                    title="🤖 Langit Chat",
                     color=discord.Color.green(),
                 )
                 embed.add_field(name="💬 Pertanyaan", value=prompt[:1024], inline=False)
@@ -125,7 +133,7 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             else:
                 chunks = [reply[i:i + 4096] for i in range(0, len(reply), 4096)]
                 embed = discord.Embed(
-                    title="🤖 AI Chat",
+                    title="🤖 Langit Chat",
                     description=chunks[0],
                     color=discord.Color.green(),
                 )
