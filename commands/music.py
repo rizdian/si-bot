@@ -26,6 +26,11 @@ ytdl_format_options = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',  # bind to ipv4 since ipv6 addresses cause issues sometimes
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web'],
+        }
+    },
     'http_headers': {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -73,8 +78,11 @@ class YTDLSource(discord.PCMVolumeTransformer):
             data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
         except Exception as e:
             logger.error(f"❌ yt-dlp error: {e}")
-            if "Sign in to confirm you’re not a bot" in str(e):
-                raise Exception("YouTube memblokir permintaan ini. Harap tambahkan `cookies.txt` ke folder bot.")
+            msg = str(e)
+            if "Sign in to confirm you’re not a bot" in msg or "YouTube memblokir permintaan ini" in msg:
+                raise Exception("YouTube memblokir bot karena terdeteksi sebagai bot. **WAJIB: Tambahkan file `cookies.txt` yang valid ke folder bot.** Lihat cara ekspor cookies di browser lu.")
+            elif "403" in msg:
+                raise Exception("Kena Error 403 (Forbidden). YouTube kayaknya nolak akses. Coba update `cookies.txt` atau tunggu sebentar.")
             raise e
 
         if 'entries' in data:
