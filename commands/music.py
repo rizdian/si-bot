@@ -24,12 +24,13 @@ COOKIE_PATH = "/app/cookies.txt"
 COOKIE_PATH = "/app/cookies.txt"
 
 ytdl_format_options = {
-    "format": "bestaudio/best/bestaudio*",
+    "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
     "no_warnings": True,
     "default_search": "ytsearch",
     "cookiefile": COOKIE_PATH,
+    "extract_flat": False,
 }
 
 ffmpeg_options = {
@@ -103,6 +104,12 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 raise Exception(
                     "Kena Error 403 Forbidden. Coba export ulang `cookies.txt`, "
                     "restart container, atau update yt-dlp."
+                )
+
+            if "Requested format is not available" in msg:
+                raise Exception(
+                    "Format lagu tidak tersedia. YouTube mungkin membatasi akses atau "
+                    "perlu update yt-dlp."
                 )
 
             raise

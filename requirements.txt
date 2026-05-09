@@ -3,5 +3,5 @@ python-dotenv
 PyNaCl
 davey
 aiohttp
-yt-dlp
+yt-dlp>=2025.1.15
 spotipy
