@@ -36,7 +36,7 @@ ytdl_format_options = {
     "logtostderr": False,
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "web"],
+            "player_client": ["android_vr", "web"],
             "skip": ["dash", "hls"],
         }
     },
