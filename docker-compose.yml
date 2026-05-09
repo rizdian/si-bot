@@ -12,6 +12,8 @@ services:
       - WELCOME_CHANNEL_ID
       - ROLE_BOYS_ID
       - ROLE_GIRLS_ID
+      - SPOTIFY_CLIENT_ID
+      - SPOTIFY_CLIENT_SECRET
     restart: unless-stopped
     volumes:
       - ./cookies.txt:/app/cookies.txt:ro
