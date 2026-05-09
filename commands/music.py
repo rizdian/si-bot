@@ -21,8 +21,10 @@ COOKIE_PATH = "/app/cookies.txt"
 # yt-dlp Config
 # =========================
 
+COOKIE_PATH = "/app/cookies.txt"
+
 ytdl_format_options = {
-    "format": "bestaudio/best",
+    "format": "bestaudio[ext=m4a]/bestaudio/best",
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
     "restrictfilenames": True,
     "noplaylist": True,
@@ -31,36 +33,33 @@ ytdl_format_options = {
     "logtostderr": False,
     "quiet": True,
     "no_warnings": True,
-    "default_search": "auto",
+    "default_search": "ytsearch",
     "source_address": "0.0.0.0",
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android", "web"],
-        }
-    },
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/91.0.4472.124 Safari/537.36"
+            "Chrome/124.0.0.0 Safari/537.36"
         ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-us,en;q=0.5",
-        "Sec-Fetch-Mode": "navigate",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
     },
 }
 
-if os.path.exists(COOKIE_PATH):
-    if os.path.isfile(COOKIE_PATH):
-        ytdl_format_options["cookiefile"] = COOKIE_PATH
-        logger.info(f"🍪 Cookies loaded from {COOKIE_PATH}")
-    else:
-        logger.error(f"❌ '{COOKIE_PATH}' ditemukan tetapi berupa FOLDER, bukan FILE.")
+if os.path.isfile(COOKIE_PATH):
+    ytdl_format_options["cookiefile"] = COOKIE_PATH
+    logger.info(f"🍪 Cookies loaded from {COOKIE_PATH}")
+elif os.path.isdir(COOKIE_PATH):
+    logger.error(f"❌ '{COOKIE_PATH}' ditemukan tetapi berupa FOLDER, bukan FILE.")
 else:
     logger.warning(f"⚠️ {COOKIE_PATH} not found. YouTube might block requests.")
 
 ffmpeg_options = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "before_options": (
+        "-reconnect 1 "
+        "-reconnect_streamed 1 "
+        "-reconnect_delay_max 5"
+    ),
     "options": "-vn",
 }
 
