@@ -24,20 +24,52 @@ async def ask_openrouter(session: aiohttp.ClientSession, messages: list) -> str:
         "messages": messages,
     }
 
-    async with session.post(OPENROUTER_BASE_URL, headers=headers, json=payload) as resp:
-        data = await resp.json()
+    max_retries = 3
+    retry_delay = 2
 
-        if resp.status != 200:
-            error_msg = data.get("error", {}).get("message", "Unknown error")
-            logger.error("OpenRouter API error: %s", error_msg)
-            return f"❌ Gagal mendapatkan respons dari Langit: {error_msg}"
+    # Semaphore untuk membatasi request simultan agar tidak membanjiri API
+    if not hasattr(session, '_openrouter_sem'):
+        session._openrouter_sem = asyncio.Semaphore(2)
 
-        choices = data.get("choices", [])
-        if not choices:
-            return "❌ Langit tidak memberikan respons."
+    async with session._openrouter_sem:
+        for attempt in range(max_retries):
+            try:
+                async with session.post(OPENROUTER_BASE_URL, headers=headers, json=payload, timeout=20) as resp:
+                    if resp.status == 429:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"⚠️ Rate limited (429) oleh OpenRouter. Retrying in {retry_delay}s... (Attempt {attempt + 1})")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            return "❌ Waduh, Aku lagi sibuk banget . Coba lagi entar ya."
 
-        return choices[0]["message"]["content"]
+                    data = await resp.json()
 
+                    if resp.status != 200:
+                        error_msg = data.get("error", {}).get("message", "Unknown error")
+                        logger.error("OpenRouter API error: %s", error_msg)
+                        return f"❌ Bentar Lagi Lag coba Tag Moderator"
+
+                    choices = data.get("choices", [])
+                    if not choices:
+                        return "❌ Bengong."
+
+                    return choices[0]["message"]["content"]
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"⚠️ Error pas konek ke OpenRouter: {e}. Retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2
+                else:
+                    logger.exception("Error fatal saat menghubungi OpenRouter")
+                    return f"❌ Bentar Lagi Lag coba Tag Moderator."
+    
+    return "❌ Bentar Lagi Lag coba Tag Moderator."
+
+
+# Cooldown storage
+ai_cooldowns = {}
 
 def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client):
     @tree.command(name="chat", description="Tanya Langit menggunakan OpenRouter", guild=TEST_GUILD)
@@ -49,6 +81,19 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
                 ephemeral=True,
             )
             return
+
+        # Cooldown check
+        user_id = interaction.user.id
+        now = asyncio.get_event_loop().time()
+        if user_id in ai_cooldowns and now - ai_cooldowns[user_id] < 10:
+            retry_after = int(10 - (now - ai_cooldowns[user_id]))
+            await interaction.response.send_message(
+                f"⚠️ Santai dikit napa, tunggu {retry_after} detik lagi baru nanya lagi.",
+                ephemeral=True
+            )
+            return
+
+        ai_cooldowns[user_id] = now
 
         await interaction.response.defer(thinking=True)
 

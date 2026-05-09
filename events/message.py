@@ -1,8 +1,8 @@
 import discord
 import re
+import asyncio
 
 from config import OWNER_USER_ID, AI_PERSONALITY
-from utils.logger import send_log_embed
 
 
 def is_manual_mention(message: discord.Message, user_id: int) -> bool:
@@ -16,8 +16,19 @@ def register_message_events(client: discord.Client):
 
         # Logika untuk Owner Tag (Langit menjawab 1 kalimat)
         if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
-            from commands.ai import ask_openrouter
+            from commands.ai import ask_openrouter, ai_cooldowns
             
+            # Cooldown check
+            now = asyncio.get_event_loop().time()
+            if message.author.id in ai_cooldowns and now - ai_cooldowns[message.author.id] < 10:
+                return
+
+            ai_cooldowns[message.author.id] = now
+            
+            # Abaikan pesan yang terlalu pendek
+            if len(message.content.strip()) < 2:
+                return
+
             # Ambil riwayat pesan (misal 5 pesan terakhir)
             history_lines = []
             async for msg in message.channel.history(limit=5, before=message):
@@ -53,8 +64,24 @@ def register_message_events(client: discord.Client):
 
         # Logika Langit jika bot di-tag
         if client.user and client.user.mentioned_in(message):
-            from commands.ai import ask_openrouter
+            from commands.ai import ask_openrouter, ai_cooldowns
             
+            # Cooldown check
+            now = asyncio.get_event_loop().time()
+            if message.author.id in ai_cooldowns and now - ai_cooldowns[message.author.id] < 10:
+                return
+
+            ai_cooldowns[message.author.id] = now
+
+            # Bersihkan tag bot dari konten saat ini untuk cek panjang pesan
+            prompt = message.content
+            prompt = re.sub(r'<@!?%s>' % client.user.id, '', prompt).strip()
+
+            # Abaikan pesan yang terlalu pendek atau spam
+            if len(prompt) < 2 or prompt.lower() in ["w", "ok", "p", "halo", "test"]:
+                # Kalau cuma ngetag doang tanpa pesan, mungkin mau nyapa, tapi kita filter biar hemat
+                if not prompt: return
+
             # Ambil riwayat pesan (misal 10 pesan terakhir sebelum pesan ini)
             history_lines = []
             async for msg in message.channel.history(limit=10, before=message):
@@ -69,9 +96,6 @@ def register_message_events(client: discord.Client):
             
             history_context = "Histori obrolan sebelumnya:\n" + "\n".join(history_lines) if history_lines else ""
 
-            # Bersihkan tag bot dari konten saat ini
-            prompt = message.content
-            prompt = re.sub(r'<@!?%s>' % client.user.id, '', prompt).strip()
             # Sertakan nama pengirim saat ini juga
             prompt_with_author = f"{message.author.display_name}: {prompt}" if prompt else "Halo"
 
