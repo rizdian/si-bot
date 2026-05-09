@@ -235,12 +235,13 @@ def spotify_to_queries(url: str) -> tuple[list[str], Optional[str]]:
         if "track" in url:
             track = sp.track(url)
             queries.append(f"{track['name']} {track['artists'][0]['name']}")
+            info = f"ℹ️ Menambahkan lagu Spotify: **{track['name']}**"
         
         elif "album" in url:
             album = sp.album(url)
             for item in album["tracks"]["items"]:
                 queries.append(f"{item['name']} {album['artists'][0]['name']}")
-            info = f"ℹ️ Menambahkan **{len(queries)}** lagu dari album: **{album['name']}**"
+            info = f"ℹ️ Menambahkan **{len(queries)}** lagu dari album Spotify: **{album['name']}**"
 
         elif "playlist" in url:
             results = sp.playlist_items(url)
@@ -255,14 +256,14 @@ def spotify_to_queries(url: str) -> tuple[list[str], Optional[str]]:
                     queries.append(f"{track['name']} {track['artists'][0]['name']}")
             
             playlist_info = sp.playlist(url, fields="name")
-            info = f"ℹ️ Menambahkan **{len(queries)}** lagu dari playlist: **{playlist_info['name']}**"
+            info = f"ℹ️ Menambahkan **{len(queries)}** lagu dari playlist Spotify: **{playlist_info['name']}**"
 
         elif "artist" in url:
             artist = sp.artist(url)
             top_tracks = sp.artist_top_tracks(url)
             for track in top_tracks['tracks']:
                 queries.append(f"{track['name']} {artist['name']}")
-            info = f"ℹ️ Menambahkan **{len(queries)}** lagu terpopuler dari artist: **{artist['name']}**"
+            info = f"ℹ️ Menambahkan **{len(queries)}** lagu terpopuler dari artist Spotify: **{artist['name']}**"
         
         else:
             raise Exception("Link Spotify-nya kagak dikenali.")
@@ -330,7 +331,8 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
                         total_entries = len(entries)
                         
                         if total_entries > 0:
-                            await interaction.channel.send(f"ℹ️ Menambahkan **{total_entries}** lagu dari playlist YouTube.")
+                            playlist_title = result.get("title", "YouTube Playlist")
+                            await interaction.channel.send(f"ℹ️ Menambahkan **{total_entries}** lagu dari playlist YouTube: **{playlist_title}**")
                         
                         for entry_idx, entry in enumerate(entries):
                             try:
