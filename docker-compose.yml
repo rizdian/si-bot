@@ -16,4 +16,4 @@ services:
       - SPOTIFY_CLIENT_SECRET
     restart: unless-stopped
     volumes:
-      - ./cookies.txt:/app/cookies.txt:ro
+      - /home/ubuntu/discord-bot/cookies.txt:/app/cookies.txt:ro
