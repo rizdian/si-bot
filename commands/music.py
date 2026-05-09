@@ -1,3 +1,4 @@
+import os
 import asyncio
 import discord
 import yt_dlp
@@ -26,6 +27,13 @@ ytdl_format_options = {
     'default_search': 'auto',
     'source_address': '0.0.0.0',  # bind to ipv4 since ipv6 addresses cause issues sometimes
 }
+
+# Load cookies if available to avoid bot detection
+if os.path.exists('cookies.txt'):
+    ytdl_format_options['cookiefile'] = 'cookies.txt'
+    logger.info("🍪 Cookies loaded from cookies.txt")
+else:
+    logger.warning("⚠️ cookies.txt not found. YouTube might block requests.")
 
 ffmpeg_options = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
