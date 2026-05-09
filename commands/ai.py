@@ -6,73 +6,204 @@ import aiohttp
 import discord
 from discord import app_commands
 
-from config import GUILD_ID, OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL, AI_PERSONALITY
+from config import (
+    GUILD_ID,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_KEY_URL,
+    OPENROUTER_MODEL,
+    AI_PERSONALITY,
+    OWNER_USER_ID,
+)
 
 logger = logging.getLogger("bot")
 
 TEST_GUILD = discord.Object(id=GUILD_ID)
 
+AI_COOLDOWN_SECONDS = 10
+AI_HISTORY_LIMIT = 2
+AI_MAX_TOKENS = 350
+AI_TIMEOUT_SECONDS = 20
+AI_MAX_RETRIES = 3
+AI_CONCURRENT_LIMIT = 2
 
-async def ask_openrouter(session: aiohttp.ClientSession, messages: list) -> str:
+ai_cooldowns: dict[int, float] = {}
+
+
+def clean_text(text: str, limit: int = 1000) -> str:
+    if not text:
+        return ""
+
+    text = text.strip()
+    text = re.sub(r"\s+", " ", text)
+
+    return text[:limit]
+
+
+async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str, str]]) -> str:
+    if not hasattr(session, "_openrouter_sem"):
+        session._openrouter_sem = asyncio.Semaphore(AI_CONCURRENT_LIMIT)
+
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
-    
+
     payload = {
         "model": OPENROUTER_MODEL,
         "messages": messages,
+        "max_tokens": AI_MAX_TOKENS,
+        "temperature": 0.8,
     }
 
-    max_retries = 3
     retry_delay = 2
 
-    # Semaphore untuk membatasi request simultan agar tidak membanjiri API
-    if not hasattr(session, '_openrouter_sem'):
-        session._openrouter_sem = asyncio.Semaphore(2)
-
     async with session._openrouter_sem:
-        for attempt in range(max_retries):
+        for attempt in range(1, AI_MAX_RETRIES + 1):
             try:
-                async with session.post(OPENROUTER_BASE_URL, headers=headers, json=payload, timeout=20) as resp:
+                async with session.post(
+                    OPENROUTER_BASE_URL,
+                    headers=headers,
+                    json=payload,
+                    timeout=AI_TIMEOUT_SECONDS,
+                ) as resp:
+                    data = await resp.json(content_type=None)
+
                     if resp.status == 429:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"⚠️ Rate limited (429) oleh OpenRouter. Retrying in {retry_delay}s... (Attempt {attempt + 1})")
+                        if attempt < AI_MAX_RETRIES:
+                            logger.warning(
+                                "OpenRouter rate limited. retry=%s delay=%ss",
+                                attempt,
+                                retry_delay,
+                            )
                             await asyncio.sleep(retry_delay)
                             retry_delay *= 2
                             continue
-                        else:
-                            return "❌ Waduh, Aku lagi sibuk banget . Coba lagi entar ya."
 
-                    data = await resp.json()
+                        return "❌ Waduh, gue lagi kena limit. Coba lagi bentar."
 
                     if resp.status != 200:
                         error_msg = data.get("error", {}).get("message", "Unknown error")
-                        logger.error("OpenRouter API error: %s", error_msg)
-                        return f"❌ Bentar Lagi Lag coba Tag Moderator"
+                        logger.error("OpenRouter error status=%s message=%s", resp.status, error_msg)
+                        return "❌ Lagi error dikit. Coba tag moderator aja."
 
-                    choices = data.get("choices", [])
+                    choices = data.get("choices") or []
                     if not choices:
-                        return "❌ Bengong."
+                        return "❌ Bengong. Modelnya kaga jawab."
 
-                    return choices[0]["message"]["content"]
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    logger.warning(f"⚠️ Error pas konek ke OpenRouter: {e}. Retrying in {retry_delay}s...")
-                    await asyncio.sleep(retry_delay)
-                    retry_delay *= 2
-                else:
-                    logger.exception("Error fatal saat menghubungi OpenRouter")
-                    return f"❌ Bentar Lagi Lag coba Tag Moderator."
-    
-    return "❌ Bentar Lagi Lag coba Tag Moderator."
+                    content = choices[0].get("message", {}).get("content")
+                    return content or "❌ Kosong jawabannya. Aneh bat."
+
+            except asyncio.TimeoutError:
+                logger.warning("OpenRouter timeout attempt=%s", attempt)
+            except Exception:
+                logger.exception("Failed calling OpenRouter attempt=%s", attempt)
+
+            if attempt < AI_MAX_RETRIES:
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+
+    return "❌ Bentar, lagi lag. Coba lagi nanti."
 
 
-# Cooldown storage
-ai_cooldowns = {}
+async def get_openrouter_key_info(session: aiohttp.ClientSession) -> dict | str:
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    }
+
+    try:
+        async with session.get(OPENROUTER_KEY_URL, headers=headers, timeout=10) as resp:
+            if resp.status != 200:
+                logger.error("OpenRouter key info error status=%s", resp.status)
+                return f"❌ Gagal ambil info key. Status: {resp.status}"
+
+            return await resp.json()
+    except Exception:
+        logger.exception("Failed calling OpenRouter key info")
+        return "❌ Error pas mau ngecek limit."
+
+
+async def build_user_history(channel: discord.abc.Messageable, client: discord.Client) -> list[dict[str, str]]:
+    history: list[dict[str, str]] = []
+
+    async for msg in channel.history(limit=AI_HISTORY_LIMIT):
+        if msg.author.bot:
+            continue
+
+        content = clean_text(msg.content, limit=500)
+        if not content:
+            continue
+
+        history.append({
+            "role": "user",
+            "content": content,
+        })
+
+    history.reverse()
+    return history
+
+
+async def build_member_context(interaction: discord.Interaction, prompt: str) -> str:
+    if not interaction.guild:
+        return ""
+
+    context_parts = [
+        f"- {interaction.user.display_name} adalah pengirim pesan saat ini."
+    ]
+
+    user_ids = set(re.findall(r"<@!?(\d+)>", prompt))
+
+    for raw_user_id in user_ids:
+        try:
+            user_id = int(raw_user_id)
+            member = interaction.guild.get_member(user_id)
+
+            if not member:
+                member = await interaction.guild.fetch_member(user_id)
+
+            roles = [role.name.lower() for role in member.roles]
+
+            category = "member umum"
+            if any("admin" in role or "mod" in role for role in roles):
+                category = "moderator/admin"
+            elif any("boy" in role for role in roles):
+                category = "boys"
+            elif any("girl" in role for role in roles):
+                category = "girls"
+
+            context_parts.append(
+                f"- {member.display_name} adalah {category}."
+            )
+
+        except Exception:
+            logger.warning("Failed fetching mentioned member user_id=%s", raw_user_id)
+
+    return "\n".join(context_parts)
+
+
+def is_on_cooldown(user_id: int) -> tuple[bool, int]:
+    now = asyncio.get_event_loop().time()
+    last_used = ai_cooldowns.get(user_id)
+
+    if not last_used:
+        ai_cooldowns[user_id] = now
+        return False, 0
+
+    elapsed = now - last_used
+    if elapsed < AI_COOLDOWN_SECONDS:
+        retry_after = int(AI_COOLDOWN_SECONDS - elapsed)
+        return True, retry_after
+
+    ai_cooldowns[user_id] = now
+    return False, 0
+
 
 def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client):
-    @tree.command(name="chat", description="Tanya Langit menggunakan OpenRouter", guild=TEST_GUILD)
+    @tree.command(
+        name="chat",
+        description="Tanya Langit menggunakan OpenRouter",
+        guild=TEST_GUILD,
+    )
     @app_commands.describe(prompt="Pertanyaan atau pesan untuk Langit")
     async def chat(interaction: discord.Interaction, prompt: str) -> None:
         if not OPENROUTER_API_KEY:
@@ -82,115 +213,152 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             )
             return
 
-        # Cooldown check
         user_id = interaction.user.id
-        now = asyncio.get_event_loop().time()
-        if user_id in ai_cooldowns and now - ai_cooldowns[user_id] < 10:
-            retry_after = int(10 - (now - ai_cooldowns[user_id]))
+        cooldown, retry_after = is_on_cooldown(user_id)
+
+        if cooldown:
             await interaction.response.send_message(
-                f"⚠️ Santai dikit napa, tunggu {retry_after} detik lagi baru nanya lagi.",
-                ephemeral=True
+                f"⚠️ Santai dikit napa, tunggu {retry_after} detik lagi.",
+                ephemeral=True,
             )
             return
-
-        ai_cooldowns[user_id] = now
 
         await interaction.response.defer(thinking=True)
 
         try:
-            # Ambil riwayat pesan (misal 5 pesan terakhir) secara paralel
-            history = []
-            history_tasks = []
-            async for msg in interaction.channel.history(limit=5):
-                history_tasks.append(msg)
-            
-            for msg in history_tasks:
-                if msg.author.bot:
-                    if msg.author.id == client.user.id:
-                        # Jika pesan bot memiliki embed (hasil /chat sebelumnya), ambil isinya
-                        if msg.embeds:
-                            for embed in msg.embeds:
-                                for field in embed.fields:
-                                    if field.name == "🧠 Jawaban":
-                                        history.append({"role": "assistant", "content": field.value})
-                        else:
-                            history.append({"role": "assistant", "content": msg.content})
-                else:
-                    # Bersihkan prompt jika ada tag bot (biasanya tidak ada di slash command tapi untuk jaga-jaga)
-                    content = msg.content
-                    history.append({"role": "user", "content": content})
-            
-            # Balik urutan agar kronologis (lama ke baru)
-            history.reverse()
+            prompt = clean_text(prompt, limit=1000)
 
-            context_parts = []
-            # Tambahkan info tentang pengirim pesan saat ini
-            context_parts.append(f"- {interaction.user.display_name} (ID: {interaction.user.id}) adalah pengirim pesan saat ini.")
-            
-            user_ids = re.findall(r"<@!?(\d+)>", prompt)
-            
-            mention_tasks = []
-            for user_id in set(user_ids):
-                user_id_int = int(user_id)
-                member = interaction.guild.get_member(user_id_int)
-                if not member:
-                    mention_tasks.append(interaction.guild.fetch_member(user_id_int))
-                else:
-                    mention_tasks.append(asyncio.sleep(0, result=member))
-
-            if mention_tasks:
-                members = await asyncio.gather(*mention_tasks, return_exceptions=True)
-                for member in members:
-                    if isinstance(member, discord.Member):
-                        roles = [role.name.lower() for role in member.roles]
-                        category = "umum"
-                        if any("mod" in r for r in roles) or any("admin" in r for r in roles):
-                            category = "moderator"
-                        elif any("boy" in r for r in roles):
-                            category = "boys"
-                        elif any("girl" in r for r in roles):
-                            category = "girls"
-                        
-                        context_parts.append(f"- {member.display_name} (ID: {member.id}) adalah seorang {category}.")
+            history = await build_user_history(interaction.channel, client)
+            member_context = await build_member_context(interaction, prompt)
 
             system_content = AI_PERSONALITY
-            if context_parts:
-                context = "\n".join(context_parts)
-                system_content += f"\n\nKonteks tambahan tentang member yang di-mention:\n{context}"
 
-            messages = [{"role": "system", "content": system_content}]
-            messages.extend(history)
-            
-            # Tambahkan prompt terbaru jika belum masuk di history (interaction.channel.history mungkin belum mencatat slash command ini)
-            # Karena /chat adalah slash command, pesannya belum ada di channel history saat diproses.
-            messages.append({"role": "user", "content": prompt})
+            if member_context:
+                system_content += (
+                    "\n\nKonteks tambahan Discord:\n"
+                    f"{member_context}"
+                )
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": clean_text(system_content, limit=1500),
+                },
+                *history,
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ]
 
             reply = await ask_openrouter(client.ai_session, messages)
+            reply = clean_text(reply, limit=4000)
 
-            if len(reply) <= 4096:
-                embed = discord.Embed(
-                    title="🤖 Langit Chat",
-                    color=discord.Color.green(),
-                )
-                embed.add_field(name="💬 Pertanyaan", value=prompt[:1024], inline=False)
-                embed.add_field(name="🧠 Jawaban", value=reply[:1024], inline=False)
-                await interaction.followup.send(embed=embed)
-            else:
-                chunks = [reply[i:i + 4096] for i in range(0, len(reply), 4096)]
-                embed = discord.Embed(
-                    title="🤖 Langit Chat",
-                    description=chunks[0],
-                    color=discord.Color.green(),
-                )
-                embed.add_field(name="💬 Pertanyaan", value=prompt[:1024], inline=False)
-                await interaction.followup.send(embed=embed)
+            embed = discord.Embed(
+                title="🤖 Langit Chat",
+                color=discord.Color.green(),
+            )
+            embed.add_field(
+                name="💬 Pertanyaan",
+                value=prompt[:1024] or "-",
+                inline=False,
+            )
+            embed.add_field(
+                name="🧠 Jawaban",
+                value=reply[:1024] or "-",
+                inline=False,
+            )
 
-                for chunk in chunks[1:]:
-                    await interaction.followup.send(content=chunk)
+            await interaction.followup.send(embed=embed)
+
+            if len(reply) > 1024:
+                remaining = reply[1024:]
+                chunks = [
+                    remaining[i:i + 1900]
+                    for i in range(0, len(remaining), 1900)
+                ]
+
+                for chunk in chunks:
+                    await interaction.followup.send(chunk)
 
         except Exception as e:
-            logger.exception("Error saat menghubungi OpenRouter")
+            logger.exception("Error saat menjalankan /chat")
             await interaction.followup.send(
                 f"❌ Terjadi kesalahan: {e}",
                 ephemeral=True,
             )
+
+    @tree.command(
+        name="limit",
+        description="Cek sisa kredit dan limit OpenRouter",
+        guild=TEST_GUILD,
+    )
+    async def limit(interaction: discord.Interaction) -> None:
+        if interaction.user.id != OWNER_USER_ID:
+            await interaction.response.send_message(
+                "❌ Cuma owner yang boleh ngecek ginian.",
+                ephemeral=True,
+            )
+            return
+
+        if not OPENROUTER_API_KEY:
+            await interaction.response.send_message(
+                "❌ API key OpenRouter belum dikonfigurasi.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer(thinking=True)
+
+        try:
+            res = await get_openrouter_key_info(client.ai_session)
+
+            if isinstance(res, str):
+                await interaction.followup.send(res)
+                return
+
+            data = res.get("data", {})
+            label = data.get("label", "Unknown")
+            limit_val = data.get("limit")
+            usage = data.get("usage", 0)
+            limit_remaining = data.get("limit_remaining")
+            is_free_tier = data.get("is_free_tier", False)
+
+            def format_credit(val):
+                if val is None:
+                    return "Unlimited"
+                return f"${val:,.4f}"
+
+            embed = discord.Embed(
+                title="💳 OpenRouter Key Status",
+                color=discord.Color.blue(),
+            )
+            embed.add_field(name="Label", value=label, inline=True)
+            embed.add_field(name="Free Tier", value="Ya" if is_free_tier else "Bukan", inline=True)
+            embed.add_field(name="Total Limit", value=format_credit(limit_val), inline=True)
+            embed.add_field(name="Usage (All Time)", value=format_credit(usage), inline=True)
+            embed.add_field(name="Sisa Kredit", value=format_credit(limit_remaining), inline=True)
+
+            # Daily usage if available
+            usage_daily = data.get("usage_daily", 0)
+            embed.add_field(name="Usage Hari Ini", value=format_credit(usage_daily), inline=False)
+
+            # Rate Limit Info
+            # OpenRouter standard: 20 RPM for free/low tier. 
+            # Paid users with $10+ credits get 1000 req/day on free models.
+            rate_limit = data.get("rate_limit", {})
+            if rate_limit:
+                requests_limit = rate_limit.get("requests", "N/A")
+                interval = rate_limit.get("interval", "N/A")
+                embed.add_field(name="Rate Limit (Global)", value=f"{requests_limit} req / {interval}", inline=True)
+            else:
+                # Default info based on OpenRouter docs if rate_limit object is missing
+                rpm_info = "20 RPM"
+                rpd_info = "50 RPD (Free)" if is_free_tier else "1000 RPD (Paid-Free Tier)"
+                embed.add_field(name="Rate Limit (Est.)", value=f"{rpm_info}, {rpd_info}", inline=True)
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.exception("Error saat menjalankan /limit")
+            await interaction.followup.send(f"❌ Error pas ngecek limit: {e}")
