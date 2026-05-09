@@ -24,35 +24,13 @@ COOKIE_PATH = "/app/cookies.txt"
 COOKIE_PATH = "/app/cookies.txt"
 
 ytdl_format_options = {
-    "format": "bestaudio[ext=m4a]/bestaudio/best",
-    "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
-    "restrictfilenames": True,
+    "format": "bestaudio/best/bestaudio*",
     "noplaylist": True,
-    "nocheckcertificate": True,
-    "ignoreerrors": False,
-    "logtostderr": False,
     "quiet": True,
     "no_warnings": True,
     "default_search": "ytsearch",
-    "source_address": "0.0.0.0",
-    "http_headers": {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        ),
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-    },
+    "cookiefile": COOKIE_PATH,
 }
-
-if os.path.isfile(COOKIE_PATH):
-    ytdl_format_options["cookiefile"] = COOKIE_PATH
-    logger.info(f"🍪 Cookies loaded from {COOKIE_PATH}")
-elif os.path.isdir(COOKIE_PATH):
-    logger.error(f"❌ '{COOKIE_PATH}' ditemukan tetapi berupa FOLDER, bukan FILE.")
-else:
-    logger.warning(f"⚠️ {COOKIE_PATH} not found. YouTube might block requests.")
 
 ffmpeg_options = {
     "before_options": (
