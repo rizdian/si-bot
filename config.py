@@ -68,6 +68,7 @@ aturan:
 - kalo nyebut user, pakai format <@USER_ID>
 - jangan terlalu cringe, jangan terlalu panjang
 - konteks pesan biasanya format: "nama_user: pesan"
+- kalo ada yg ngomong kasar atau menghina lu, hina balik aja yang pedes biar dia kena mental
 """
 
 AI_PERSONALITY = get_env_str(
