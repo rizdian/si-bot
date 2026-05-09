@@ -83,6 +83,17 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.url = data.get("url")
 
     @classmethod
+    async def create_source(cls, data, *, stream: bool = False):
+        if not data:
+            raise Exception("Data lagu kosong.")
+        
+        filename = data["url"] if stream else ytdl.prepare_filename(data)
+        return cls(
+            discord.FFmpegPCMAudio(filename, **ffmpeg_options),
+            data=data,
+        )
+
+    @classmethod
     async def from_url(cls, url: str, *, loop=None, stream: bool = False):
         loop = loop or asyncio.get_event_loop()
 
@@ -127,14 +138,15 @@ class YTDLSource(discord.PCMVolumeTransformer):
             entries = [entry for entry in data["entries"] if entry]
             if not entries:
                 raise Exception("Playlist/search result kosong.")
+            
+            # Jika ini playlist dan bukan hasil pencarian, kita kembalikan semua data
+            # Biarkan pemanggil (play command) yang memutuskan mau diapain
+            if data.get("_type") == "playlist":
+                return data
+                
             data = entries[0]
 
-        filename = data["url"] if stream else ytdl.prepare_filename(data)
-
-        return cls(
-            discord.FFmpegPCMAudio(filename, **ffmpeg_options),
-            data=data,
-        )
+        return await cls.create_source(data, stream=stream)
 
 
 # =========================
@@ -150,6 +162,11 @@ class MusicPlayer:
         self.vc: Optional[discord.VoiceClient] = interaction.guild.voice_client
 
         interaction.client.loop.create_task(self.player_loop())
+
+    def handle_next(self, error):
+        if error:
+            logger.error(f"Player error: {error}")
+        self.next.set()
 
     async def player_loop(self):
         await self.interaction.client.wait_until_ready()
@@ -170,8 +187,8 @@ class MusicPlayer:
 
             self.vc.play(
                 source,
-                after=lambda _: self.interaction.client.loop.call_soon_threadsafe(
-                    self.next.set
+                after=lambda e: self.interaction.client.loop.call_soon_threadsafe(
+                    self.handle_next, e
                 ),
             )
 
@@ -207,30 +224,54 @@ def get_player(interaction: discord.Interaction) -> MusicPlayer:
 # Spotify Helper
 # =========================
 
-def spotify_to_query(url: str) -> tuple[str, Optional[str]]:
+def spotify_to_queries(url: str) -> tuple[list[str], Optional[str]]:
     if not sp:
         raise Exception("Fitur Spotify kagak dikonfigurasi sama mod-nya.")
 
-    if "track" in url:
-        track = sp.track(url)
-        query = f"{track['name']} {track['artists'][0]['name']}"
-        return query, None
+    queries = []
+    info = None
 
-    if "album" in url:
-        album = sp.album(url)
-        track = album["tracks"]["items"][0]
-        query = f"{track['name']} {album['artists'][0]['name']}"
-        info = f"ℹ️ Ini album ya? Gue puterin lagu pertamanya aja: **{track['name']}**"
-        return query, info
+    try:
+        if "track" in url:
+            track = sp.track(url)
+            queries.append(f"{track['name']} {track['artists'][0]['name']}")
+        
+        elif "album" in url:
+            album = sp.album(url)
+            for item in album["tracks"]["items"]:
+                queries.append(f"{item['name']} {album['artists'][0]['name']}")
+            info = f"ℹ️ Menambahkan **{len(queries)}** lagu dari album: **{album['name']}**"
 
-    if "playlist" in url:
-        playlist = sp.playlist(url)
-        track = playlist["tracks"]["items"][0]["track"]
-        query = f"{track['name']} {track['artists'][0]['name']}"
-        info = f"ℹ️ Ini playlist ya? Gue puterin lagu pertamanya aja: **{track['name']}**"
-        return query, info
+        elif "playlist" in url:
+            results = sp.playlist_items(url)
+            tracks = results['items']
+            while results['next']:
+                results = sp.next(results)
+                tracks.extend(results['items'])
+            
+            for item in tracks:
+                if item['track']:
+                    track = item['track']
+                    queries.append(f"{track['name']} {track['artists'][0]['name']}")
+            
+            playlist_info = sp.playlist(url, fields="name")
+            info = f"ℹ️ Menambahkan **{len(queries)}** lagu dari playlist: **{playlist_info['name']}**"
 
-    raise Exception("Link Spotify-nya kagak dikenali.")
+        elif "artist" in url:
+            artist = sp.artist(url)
+            top_tracks = sp.artist_top_tracks(url)
+            for track in top_tracks['tracks']:
+                queries.append(f"{track['name']} {artist['name']}")
+            info = f"ℹ️ Menambahkan **{len(queries)}** lagu terpopuler dari artist: **{artist['name']}**"
+        
+        else:
+            raise Exception("Link Spotify-nya kagak dikenali.")
+
+    except Exception as e:
+        logger.error(f"Spotify extraction error: {e}")
+        raise Exception(f"Gagal ngambil data dari Spotify: {e}")
+
+    return queries, info
 
 
 # =========================
@@ -261,34 +302,67 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
                 await interaction.guild.voice_client.move_to(voice_channel)
                 await interaction.guild.voice_client.edit(deafen=True, mute=False)
 
-            query = search
+            queries = [search]
+            info_message = None
 
             if "spotify.com" in search:
-                query, info_message = spotify_to_query(search)
+                queries, info_message = spotify_to_queries(search)
 
                 if info_message:
                     await interaction.followup.send(info_message)
 
             player = get_player(interaction)
 
-            await interaction.followup.send(f"🔎 Nyari: **{query}**...")
+            for i, query in enumerate(queries):
+                try:
+                    if i == 0:
+                        await interaction.followup.send(f"🔎 Nyari: **{query}**...")
+                    
+                    result = await YTDLSource.from_url(
+                        query,
+                        loop=client.loop,
+                        stream=True,
+                    )
 
-            source = await YTDLSource.from_url(
-                query,
-                loop=client.loop,
-                stream=True,
-            )
+                    # Jika hasil adalah playlist (dict yang punya 'entries')
+                    if isinstance(result, dict) and "entries" in result:
+                        entries = [e for e in result["entries"] if e]
+                        total_entries = len(entries)
+                        
+                        if total_entries > 0:
+                            await interaction.channel.send(f"ℹ️ Menambahkan **{total_entries}** lagu dari playlist YouTube.")
+                        
+                        for entry_idx, entry in enumerate(entries):
+                            try:
+                                source = await YTDLSource.create_source(entry, stream=True)
+                                await player.queue.put(source)
+                                
+                                if entry_idx == 0 and i == 0 and not player.current:
+                                    await interaction.followup.send(f"✅ Dapet! Siap diputer: **{source.title}**")
+                            except Exception as inner_e:
+                                logger.error(f"Error processing entry {entry_idx}: {inner_e}")
+                        
+                        continue
 
-            await player.queue.put(source)
+                    # Jika hasil adalah single source (objek YTDLSource)
+                    source = result
+                    await player.queue.put(source)
 
-            if player.current:
-                await interaction.followup.send(
-                    f"✅ Ditambahin ke antrean: **{source.title}**"
-                )
-            else:
-                await interaction.followup.send(
-                    f"✅ Dapet! Siap diputer: **{source.title}**"
-                )
+                    if i == 0:
+                        if player.current:
+                            await interaction.followup.send(
+                                f"✅ Ditambahin ke antrean: **{source.title}**"
+                            )
+                        else:
+                            await interaction.followup.send(
+                                f"✅ Dapet! Siap diputer: **{source.title}**"
+                            )
+                except Exception as e:
+                    logger.error(f"Error processing query '{query}': {e}")
+                    if i == 0:
+                        await interaction.followup.send(f"❌ Gagal muter **{query}**: {e}")
+                    else:
+                        await interaction.channel.send(f"❌ Gagal nambahin **{query}** ke antrean.")
 
         except Exception as e:
             logger.error(f"Play error: {e}")
@@ -387,23 +461,29 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
 
         player = players[interaction.guild_id]
 
-        if player.queue.empty():
+        if player.queue.empty() and not player.current:
             return await interaction.response.send_message(
                 "📭 Antrean kosong, kayak hati lu."
             )
 
         upcoming = list(player.queue._queue)
-        fmt = "\n".join(
-            f"{i + 1}. **{source.title}**"
-            for i, source in enumerate(upcoming[:10])
-        )
+        fmt = ""
+        if player.current:
+            fmt += f"**Sekarang diputar:** {player.current.title}\n\n"
+        
+        if upcoming:
+            fmt += "**Antrean:**\n"
+            fmt += "\n".join(
+                f"{i + 1}. **{source.title}**"
+                for i, source in enumerate(upcoming[:10])
+            )
 
+            if len(upcoming) > 10:
+                fmt += f"\n...dan {len(upcoming) - 10} lagu lainnya."
+        
         embed = discord.Embed(
-            title=f"Antrean di {interaction.guild.name}",
+            title=f"Antrean Lagunya Kakak",
             description=fmt,
         )
-
-        if len(upcoming) > 10:
-            embed.set_footer(text=f"Dan {len(upcoming) - 10} lagu lainnya...")
 
         await interaction.response.send_message(embed=embed)
