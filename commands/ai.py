@@ -1,6 +1,7 @@
 import logging
 import re
 import asyncio
+import json
 
 import aiohttp
 import discord
@@ -40,7 +41,7 @@ def clean_text(text: str, limit: int = 1000) -> str:
     return text[:limit]
 
 
-async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str, str]]) -> str:
+async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[str, str]]):
     if not hasattr(session, "_openrouter_sem"):
         session._openrouter_sem = asyncio.Semaphore(AI_CONCURRENT_LIMIT)
 
@@ -54,6 +55,7 @@ async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str
         "messages": messages,
         "max_tokens": AI_MAX_TOKENS,
         "temperature": 0.8,
+        "stream": True,
     }
 
     retry_delay = 2
@@ -67,32 +69,55 @@ async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str
                     json=payload,
                     timeout=AI_TIMEOUT_SECONDS,
                 ) as resp:
-                    data = await resp.json(content_type=None)
-
                     if resp.status == 429:
                         if attempt < AI_MAX_RETRIES:
-                            logger.warning(
-                                "OpenRouter rate limited. retry=%s delay=%ss",
-                                attempt,
-                                retry_delay,
-                            )
+                            logger.warning("OpenRouter rate limited. retry=%s delay=%ss", attempt, retry_delay)
                             await asyncio.sleep(retry_delay)
                             retry_delay *= 2
                             continue
-
-                        return "❌ Waduh, gue lagi kena limit. Coba lagi bentar."
+                        yield "❌ Waduh, gue lagi kena limit. Coba lagi bentar."
+                        return
 
                     if resp.status != 200:
-                        error_msg = data.get("error", {}).get("message", "Unknown error")
+                        try:
+                            data = await resp.json(content_type=None)
+                            error_msg = data.get("error", {}).get("message", "Unknown error")
+                        except Exception:
+                            error_msg = await resp.text()
                         logger.error("OpenRouter error status=%s message=%s", resp.status, error_msg)
-                        return "❌ Lagi error dikit. Coba tag moderator aja."
+                        yield "❌ Lagi error dikit. Coba tag moderator aja."
+                        return
 
-                    choices = data.get("choices") or []
-                    if not choices:
-                        return "❌ Bengong. Modelnya kaga jawab."
+                    async for line in resp.content:
+                        line = line.decode("utf-8").strip()
+                        if not line or line.startswith(":"):
+                            continue
 
-                    content = choices[0].get("message", {}).get("content")
-                    return content or "❌ Kosong jawabannya. Aneh bat."
+                        if line.startswith("data: "):
+                            data_str = line[len("data: "):]
+                            if data_str == "[DONE]":
+                                break
+
+                            try:
+                                data = json.loads(data_str)
+                                
+                                # Check for mid-stream error
+                                if "error" in data:
+                                    error_msg = data["error"].get("message", "Unknown mid-stream error")
+                                    logger.error("OpenRouter mid-stream error: %s", error_msg)
+                                    yield f"\n\n[ERROR: {error_msg}]"
+                                    return
+
+                                choices = data.get("choices") or []
+                                if choices:
+                                    delta = choices[0].get("delta") or {}
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                logger.error("Failed to parse SSE data: %s", line)
+                                continue
+                    return
 
             except asyncio.TimeoutError:
                 logger.warning("OpenRouter timeout attempt=%s", attempt)
@@ -103,7 +128,17 @@ async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str
                 await asyncio.sleep(retry_delay)
                 retry_delay *= 2
 
-    return "❌ Bentar, lagi lag. Coba lagi nanti."
+    yield "❌ Bentar, lagi lag. Coba lagi nanti."
+
+
+async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str, str]]) -> str:
+    full_reply = ""
+    async for chunk in stream_openrouter(session, messages):
+        if "[ERROR:" in chunk: # Special handling for mid-stream error representation
+             pass 
+        full_reply += chunk
+    
+    return full_reply or "❌ Kosong jawabannya. Aneh bat."
 
 
 async def get_openrouter_key_info(session: aiohttp.ClientSession) -> dict | str:
@@ -251,9 +286,7 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
                 },
             ]
 
-            reply = await ask_openrouter(client.ai_session, messages)
-            reply = clean_text(reply, limit=4000)
-
+            reply = ""
             embed = discord.Embed(
                 title="🤖 Langit Chat",
                 color=discord.Color.green(),
@@ -265,14 +298,45 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             )
             embed.add_field(
                 name="🧠 Jawaban",
-                value=reply[:1024] or "-",
+                value="Sedang berpikir...",
                 inline=False,
             )
 
-            await interaction.followup.send(embed=embed)
+            message = await interaction.followup.send(embed=embed)
 
-            if len(reply) > 1024:
-                remaining = reply[1024:]
+            last_update_time = asyncio.get_event_loop().time()
+            update_interval = 1.5  # Update every 1.5 seconds to avoid Discord rate limits
+
+            async for chunk in stream_openrouter(client.ai_session, messages):
+                reply += chunk
+                
+                now = asyncio.get_event_loop().time()
+                if now - last_update_time > update_interval:
+                    display_reply = clean_text(reply, limit=1024) or "..."
+                    embed.set_field_at(1, name="🧠 Jawaban", value=display_reply, inline=False)
+                    try:
+                        await message.edit(embed=embed)
+                    except discord.NotFound:
+                        break # Message was deleted
+                    except Exception as e:
+                        logger.warning("Failed to update streaming message: %s", e)
+                    
+                    last_update_time = now
+
+            # Final update
+            final_reply = clean_text(reply, limit=4000)
+            display_reply = final_reply[:1024] or "❌ Kosong jawabannya."
+            embed.set_field_at(1, name="🧠 Jawaban", value=display_reply, inline=False)
+            
+            try:
+                await message.edit(embed=embed)
+            except discord.NotFound:
+                pass
+            except Exception as e:
+                logger.warning("Failed final update of streaming message: %s", e)
+
+            if len(final_reply) > 1024:
+                remaining = final_reply[1024:]
                 chunks = [
                     remaining[i:i + 1900]
                     for i in range(0, len(remaining), 1900)
