@@ -27,6 +27,8 @@ EMOJI_BOY = "👦"
 EMOJI_GIRL = "👧"
 
 OPENROUTER_API_KEY = os.getenv("API_KEY_AI")
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
