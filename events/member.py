@@ -1,7 +1,7 @@
 import logging
 import discord
 from utils.logger import send_log_embed, format_datetime
-from config import WELCOME_CHANNEL_ID, WELCOME_PROMPT, ROLE_BOYS_ID, ROLE_GIRLS_ID, EMOJI_BOY, EMOJI_GIRL
+from config import WELCOME_CHANNEL_ID, WELCOME_PROMPT, ROLE_BOYS_ID, ROLE_GIRLS_ID, EMOJI_BOY, EMOJI_GIRL, AI_PERSONALITY
 from commands.ai import ask_openrouter
 
 logger = logging.getLogger("bot")
@@ -35,7 +35,11 @@ def register_member_events(client: discord.Client):
             if isinstance(channel, discord.TextChannel):
                 prompt = WELCOME_PROMPT.format(name=member.display_name, mention=member.mention)
                 try:
-                    welcome_msg = await ask_openrouter(prompt)
+                    messages = [
+                        {"role": "system", "content": WELCOME_PROMPT},
+                        {"role": "user", "content": prompt}
+                    ]
+                    welcome_msg = await ask_openrouter(messages)
                     msg = await channel.send(welcome_msg)
                     
                     # Tambah reaction
