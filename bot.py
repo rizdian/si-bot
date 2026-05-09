@@ -34,10 +34,14 @@ class MyClient(discord.Client):
         register_ai_commands(self.tree, self)
         register_music_commands(self.tree, self)
 
+        # Sync guild commands
         guild = discord.Object(id=GUILD_ID)
         synced = await self.tree.sync(guild=guild)
-
         logger.info("✅ Synced guild commands: %s", [cmd.name for cmd in synced])
+
+        # Global sync (opsional, uncomment jika ingin global)
+        # await self.tree.sync()
+        # logger.info("✅ Synced global commands")
 
 client = MyClient()
 

@@ -113,9 +113,10 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
 
         # Join voice channel jika belum
         if not interaction.guild.voice_client:
-            await interaction.user.voice.channel.connect()
+            await interaction.user.voice.channel.connect(self_deaf=True, self_mute=False)
         elif interaction.guild.voice_client.channel != interaction.user.voice.channel:
             await interaction.guild.voice_client.move_to(interaction.user.voice.channel)
+            await interaction.guild.voice_client.edit(deafen=True, mute=False)
 
         query = search
         # Handle Spotify links
