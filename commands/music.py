@@ -44,7 +44,7 @@ ytdl_format_options = {
 
     # JS runtime for youtube anti-bot
     "js_runtimes": {
-        "node": "node"
+        "node": {}
     },
 
     # EJS challenge solver
