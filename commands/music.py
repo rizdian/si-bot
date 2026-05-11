@@ -24,32 +24,48 @@ COOKIE_PATH = "/app/cookies.txt"
 # =========================
 
 ytdl_format_options = {
-    "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best[ext=webm]/best[ext=m4a]/best",
+    "format": "bestaudio/best",
+    "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
+
+    "restrictfilenames": True,
     "noplaylist": True,
-    "quiet": True,
-    "no_warnings": True,
-    "default_search": "ytsearch",
-    "extract_flat": False,
     "nocheckcertificate": True,
     "ignoreerrors": False,
 
-    "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) else None,
+    "logtostderr": False,
+    "quiet": True,
+    "no_warnings": True,
 
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
+
+    # cookies
+    "cookiefile": "/app/data/cookies.txt",
+
+    # JS runtime for youtube anti-bot
+    "js_runtimes": {
+        "node": "node"
+    },
+
+    # EJS challenge solver
+    "remote_components": ["ejs:github"],
+
+    # safest client currently
     "extractor_args": {
         "youtube": {
-            "player_client": ["web_creator", "android_vr", "web"],
-            "skip": ["hls"],
+            "player_client": ["web"]
         }
     },
 
     "http_headers": {
         "User-Agent": (
-            "Mozilla/5.0 (X11; Linux x86_64) "
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0 Safari/537.36"
+            "Chrome/124.0.0.0 Safari/537.36"
         )
     },
 }
+
 
 ffmpeg_options = {
     "before_options": (
