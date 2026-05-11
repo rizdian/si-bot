@@ -10,6 +10,7 @@ from config import TOKEN, LOG_CHANNEL_ID, GUILD_ID
 from commands.general import register_general_commands
 from commands.ai import register_ai_commands
 from commands.music import register_music_commands
+from commands.afk import register_afk_commands
 from events.member import register_member_events
 from events.message import register_message_events
 from utils.logger_setup import setup_logger
@@ -38,6 +39,7 @@ class MyClient(discord.Client):
         register_general_commands(self.tree, self)
         register_ai_commands(self.tree, self)
         register_music_commands(self.tree, self)
+        register_afk_commands(self.tree, self)
 
         # Sync guild commands
         guild = discord.Object(id=GUILD_ID)

@@ -3,6 +3,7 @@ import re
 import asyncio
 
 from config import OWNER_USER_ID, AI_PERSONALITY
+from utils.afk import is_afk, remove_afk, get_afk, format_duration
 
 MAINKAN_PATTERN = re.compile(r"^mainkan\s+(.+)", re.IGNORECASE)
 
@@ -14,6 +15,35 @@ def register_message_events(client: discord.Client):
     async def on_message(message: discord.Message) -> None:
         if message.author.bot:
             return
+
+        # ── Remove AFK when user sends a message ─────────────────────────
+        if isinstance(message.author, discord.Member) and is_afk(message.author.id):
+            afk_data = remove_afk(message.author.id)
+            if afk_data and message.guild:
+                original_nick = afk_data.get("original_nick")
+                try:
+                    await message.author.edit(nick=original_nick)
+                except (discord.Forbidden, discord.HTTPException):
+                    pass
+                await message.reply(
+                    f"👋 Welcome back {message.author.mention}! AFK lu udah dihapus.",
+                    delete_after=5,
+                )
+
+        # ── Notify when mentioning an AFK user ───────────────────────────
+        if message.guild and message.mentions:
+            from utils.afk import is_afk as check_afk, get_afk as get_user_afk, format_duration as fmt_dur
+            for mentioned in message.mentions:
+                if check_afk(mentioned.id):
+                    afk_info = get_user_afk(mentioned.id)
+                    if afk_info:
+                        dur = fmt_dur(afk_info["timestamp"])
+                        reason_text = f" — *{afk_info.get('reason')}*" if afk_info.get("reason") else ""
+                        await message.reply(
+                            f"💤 **{mentioned.display_name}** lagi AFK ({dur}){reason_text}",
+                            delete_after=10,
+                        )
+                        break
 
         # ── "mainkan <judul/link>" trigger ──────────────────────────────
         mainkan_match = MAINKAN_PATTERN.match(message.content.strip())

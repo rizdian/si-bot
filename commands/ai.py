@@ -77,7 +77,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                             await asyncio.sleep(retry_delay)
                             retry_delay *= 2
                             continue
-                        yield "❌ Sepakat."
+                        yield "❌ Sabar Gw lagi Loading."
                         return
 
                     if resp.status != 200:
