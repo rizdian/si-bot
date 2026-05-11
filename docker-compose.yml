@@ -17,3 +17,7 @@ services:
     restart: unless-stopped
     volumes:
       - /home/ubuntu/discord-bot/cookies.txt:/app/cookies.txt:ro
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"

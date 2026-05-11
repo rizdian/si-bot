@@ -1,7 +1,6 @@
-discord.py
-python-dotenv
+discord.py[voice]
 PyNaCl
-davey
-aiohttp
 yt-dlp
+aiohttp
+python-dotenv
 spotipy

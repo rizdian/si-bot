@@ -23,32 +23,28 @@ COOKIE_PATH = "/app/cookies.txt"
 # yt-dlp Config
 # =========================
 
-COOKIE_PATH = "/app/cookies.txt"
-
 ytdl_format_options = {
-    "format": "bestaudio/best",
+    "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best[ext=webm]/best[ext=m4a]/best",
     "noplaylist": True,
     "quiet": True,
     "no_warnings": True,
     "default_search": "ytsearch",
-    "cookiefile": COOKIE_PATH,
     "extract_flat": False,
     "nocheckcertificate": True,
     "ignoreerrors": False,
-    "logtostderr": False,
-
-    "http_headers": {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
-    },
-
+    "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) else None,
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "web"],
+            "player_client": ["web_creator", "android_vr", "web"],
+            "skip": ["hls"],
         }
+    },
+    "http_headers": {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        )
     },
 }
 
@@ -56,10 +52,9 @@ ffmpeg_options = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5 "
-        "-nostdin"
+        "-reconnect_delay_max 5"
     ),
-    "options": "-vn",
+    "options": "-vn"
 }
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
