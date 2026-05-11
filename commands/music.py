@@ -117,43 +117,121 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if not data:
             raise Exception("Data lagu kosong.")
 
+        logger.debug(
+            f"[yt-dlp] create_source called | "
+            f"title={data.get('title')!r} "
+            f"stream={stream}"
+        )
+
         if stream:
             audio_url = None
 
+            requested_formats = data.get("requested_formats", [])
             formats = data.get("formats", [])
 
-            # ambil audio-only stream terbaik
-            audio_formats = [
-                f for f in formats
-                if f.get("acodec") != "none"
-                   and f.get("vcodec") == "none"
-            ]
-
-            if not audio_formats:
-                raise Exception("Audio-only stream kagak ketemu.")
-
-            # ambil bitrate terbesar
-            best_audio = max(
-                audio_formats,
-                key=lambda f: f.get("abr") or 0
-            )
-
-            audio_url = best_audio["url"]
-
             logger.debug(
-                f"[yt-dlp] Selected audio format | "
-                f"itag={best_audio.get('format_id')} "
-                f"ext={best_audio.get('ext')} "
-                f"abr={best_audio.get('abr')} "
-                f"acodec={best_audio.get('acodec')}"
+                f"[yt-dlp] requested_formats={len(requested_formats)} "
+                f"formats={len(formats)}"
             )
+
+            # =========================
+            # PRIORITY 1
+            # requested_formats
+            # =========================
+            if requested_formats:
+                logger.debug("[yt-dlp] Trying requested_formats...")
+
+                for idx, fmt in enumerate(requested_formats):
+                    logger.debug(
+                        f"[yt-dlp] requested_format[{idx}] | "
+                        f"itag={fmt.get('format_id')} "
+                        f"ext={fmt.get('ext')} "
+                        f"abr={fmt.get('abr')} "
+                        f"acodec={fmt.get('acodec')} "
+                        f"vcodec={fmt.get('vcodec')}"
+                    )
+
+                    if fmt.get("acodec") != "none":
+                        audio_url = fmt.get("url")
+
+                        logger.debug(
+                            f"[yt-dlp] Selected requested_format | "
+                            f"itag={fmt.get('format_id')} "
+                            f"url={audio_url}"
+                        )
+                        break
+
+            # =========================
+            # PRIORITY 2
+            # formats audio-only
+            # =========================
+            if not audio_url:
+                logger.debug("[yt-dlp] Trying formats audio detection...")
+
+                audio_formats = []
+
+                for fmt in formats:
+                    logger.debug(
+                        f"[yt-dlp] format | "
+                        f"itag={fmt.get('format_id')} "
+                        f"ext={fmt.get('ext')} "
+                        f"abr={fmt.get('abr')} "
+                        f"acodec={fmt.get('acodec')} "
+                        f"vcodec={fmt.get('vcodec')}"
+                    )
+
+                    if fmt.get("acodec") != "none":
+                        audio_formats.append(fmt)
+
+                logger.debug(
+                    f"[yt-dlp] audio_formats_found={len(audio_formats)}"
+                )
+
+                if audio_formats:
+                    best_audio = max(
+                        audio_formats,
+                        key=lambda f: f.get("abr") or 0
+                    )
+
+                    audio_url = best_audio.get("url")
+
+                    logger.debug(
+                        f"[yt-dlp] Selected best_audio | "
+                        f"itag={best_audio.get('format_id')} "
+                        f"ext={best_audio.get('ext')} "
+                        f"abr={best_audio.get('abr')} "
+                        f"acodec={best_audio.get('acodec')} "
+                        f"vcodec={best_audio.get('vcodec')} "
+                        f"url={audio_url}"
+                    )
+
+            # =========================
+            # PRIORITY 3
+            # fallback
+            # =========================
+            if not audio_url:
+                logger.warning(
+                    "[yt-dlp] No audio format found. "
+                    "Fallback to data['url']"
+                )
+
+                audio_url = data.get("url")
+
+            if not audio_url:
+                logger.error("[yt-dlp] FINAL FAIL | audio_url is empty")
+                raise Exception("Audio stream kagak ketemu.")
 
             filename = audio_url
 
         else:
             filename = ytdl.prepare_filename(data)
 
-        logger.debug(f"[yt-dlp] AUDIO URL = {filename}")
+            logger.debug(
+                f"[yt-dlp] Using downloaded file | "
+                f"filename={filename}"
+            )
+
+        logger.debug(f"[yt-dlp] FINAL AUDIO URL = {filename}")
 
         return cls(
             discord.FFmpegPCMAudio(
