@@ -2,7 +2,9 @@ import os
 import asyncio
 import logging
 from typing import Optional
+from urllib.parse import quote
 
+import aiohttp
 import discord
 import yt_dlp
 import spotipy
@@ -495,3 +497,98 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
         )
 
         await interaction.response.send_message(embed=embed)
+
+    async def _fetch_lyrics(artist: str, title: str) -> Optional[str]:
+        url = f"https://api.lyrics.ovh/v1/{quote(artist)}/{quote(title)}"
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        return data.get("lyrics")
+                    return None
+            except Exception as e:
+                logger.error(f"Lyrics fetch error: {e}")
+                return None
+
+    async def _auto_lyrics(interaction: discord.Interaction):
+        player = players.get(interaction.guild_id)
+        if not player or not player.current:
+            return None, None
+
+        full_title = player.current.title
+        separators = [" - ", " | ", " — ", " – "]
+        for sep in separators:
+            if sep in full_title:
+                parts = full_title.split(sep, 1)
+                return parts[0].strip(), parts[1].strip()
+
+        if " " in full_title:
+            words = full_title.split(" ")
+            return words[0], " ".join(words[1:])
+
+        return None, full_title
+
+    @tree.command(
+        name="lyrics",
+        description="Cari lirik lagu (otomatis dari lagu yang lagi diputar, atau manual)",
+        guild=TEST_GUILD,
+    )
+    @app_commands.describe(
+        artist="Nama artis (opsional kalau lagi muter lagu)",
+        title="Judul lagu (opsional kalau lagi muter lagu)",
+    )
+    async def lyrics(
+        interaction: discord.Interaction,
+        artist: Optional[str] = None,
+        title: Optional[str] = None,
+    ):
+        await interaction.response.defer()
+
+        if not artist and not title:
+            artist, title = await _auto_lyrics(interaction)
+            if not artist and not title:
+                return await interaction.followup.send(
+                    "❌ Kagak ada lagu yang lagi diputar, dan lu juga kagak kasih judul. Mau cari lirik apaan?"
+                )
+
+        query_display = f"{artist} - {title}" if artist else title
+
+        await interaction.followup.send(f"🔎 Nyari lirik: **{query_display}**...")
+
+        lyrics_text = await _fetch_lyrics(artist or "", title or "")
+
+        if not lyrics_text:
+            return await interaction.followup.send(
+                f"❌ Lirik buat **{query_display}** kagak ketemu. Coba tulis nama artis dan judulnya lebih spesifik."
+            )
+
+        lyrics_text = lyrics_text.strip()
+
+        if len(lyrics_text) <= 4096:
+            embed = discord.Embed(
+                title=f"🎤 Lirik: {query_display}",
+                description=lyrics_text[:4096],
+                color=discord.Color.blurple(),
+            )
+            if len(lyrics_text) > 2048:
+                embed.description = lyrics_text[:2048]
+                remaining = lyrics_text[2048:]
+                await interaction.followup.send(embed=embed)
+                chunks = [remaining[i:i + 2000] for i in range(0, len(remaining), 2000)]
+                for chunk in chunks:
+                    await interaction.followup.send(
+                        embed=discord.Embed(description=chunk, color=discord.Color.blurple())
+                    )
+            else:
+                await interaction.followup.send(embed=embed)
+        else:
+            chunks = [lyrics_text[i:i + 4096] for i in range(0, len(lyrics_text), 4096)]
+            for idx, chunk in enumerate(chunks):
+                embed = discord.Embed(
+                    title=f"🎤 Lirik: {query_display} (bagian {idx + 1}/{len(chunks)})" if len(chunks) > 1 else f"🎤 Lirik: {query_display}",
+                    description=chunk,
+                    color=discord.Color.blurple(),
+                )
+                await interaction.followup.send(embed=embed)
