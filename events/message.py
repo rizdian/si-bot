@@ -69,7 +69,7 @@ def register_message_events(client: discord.Client):
             author_info = f"- {message.author.display_name} (ID: {message.author.id})"
             # Karena ini mention owner, tambahkan info owner juga
             owner_member = message.guild.get_member(OWNER_USER_ID) if message.guild else None
-            owner_name = owner_member.display_name if owner_member else "Owner"
+            owner_name = owner_member.display_name if owner_member else "Moderator"
             owner_info = f"- {owner_name} (ID: {OWNER_USER_ID})"
 
             # Tambahkan instruksi khusus agar jawaban hanya 1 kalimat
@@ -105,9 +105,9 @@ def register_message_events(client: discord.Client):
                 # Kalau cuma ngetag doang tanpa pesan, mungkin mau nyapa, tapi kita filter biar hemat
                 if not prompt: return
 
-            # Ambil riwayat pesan (misal 10 pesan terakhir sebelum pesan ini)
+            # Ambil riwayat pesan (misal 5 pesan terakhir sebelum pesan ini)
             history_lines = []
-            async for msg in message.channel.history(limit=10, before=message):
+            async for msg in message.channel.history(limit=5, before=message):
                 content = msg.content
                 # Bersihkan tag bot dari history jika ada
                 content = re.sub(r'<@!?%s>' % client.user.id, '', content).strip()

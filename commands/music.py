@@ -111,6 +111,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.data = data
         self.title = data.get("title", "Unknown Title")
         self.url = data.get("url")
+        self.requester = None
 
     @classmethod
     async def create_source(cls, data, *, stream: bool = False):
@@ -439,6 +440,12 @@ class MusicControllerView(discord.ui.View):
                 ephemeral=True,
             )
 
+        if not vc.is_playing() and not vc.is_paused():
+            return await interaction.response.send_message(
+                "❌ Kagak ada lagu yang lagi diputer, mau nge-pause apaan?",
+                ephemeral=True,
+            )
+
         if vc.is_paused():
             vc.resume()
 
@@ -467,8 +474,13 @@ class MusicControllerView(discord.ui.View):
     ):
         vc = interaction.guild.voice_client
 
-        if vc and vc.is_playing():
-            vc.stop()
+        if not vc or not vc.is_playing():
+            return await interaction.response.send_message(
+                "❌ Kagak ada lagu yang lagi diputer, skip apaan?",
+                ephemeral=True,
+            )
+
+        vc.stop()
 
         await interaction.response.send_message(
             "⏭️ Lagu diskip.",
@@ -598,9 +610,10 @@ class MusicPlayer:
             # NOW PLAYING EMBED
             # =========================
 
+            requester = source.requester or self.interaction.user
             embed = build_now_playing_embed(
                 source=source,
-                requester=self.interaction.user,
+                requester=requester,
                 voice_channel=self.vc.channel,
             )
 
@@ -769,6 +782,7 @@ async def do_play(
                 for entry_idx, entry in enumerate(entries):
                     try:
                         source = await YTDLSource.create_source(entry, stream=True)
+                        source.requester = requester
                         await player.queue.put(source)
                         if entry_idx == 0 and i == 0 and not player.current:
                             await send(f"✅ Dapet! Siap diputer: **{source.title}**")
@@ -777,6 +791,7 @@ async def do_play(
                 continue
 
             source = result
+            source.requester = requester
             await player.queue.put(source)
 
             if i == 0:
