@@ -34,7 +34,7 @@ ytdl_format_options = {
     "cookiefile": "/app/data/cookies.txt",
     "extractor_args": {
         "youtube": {
-            "player_client": ["web_creator", "android_vr", "web"],
+            "player_client": ["web"],
         }
     },
     "http_headers": {
