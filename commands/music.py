@@ -24,7 +24,7 @@ COOKIE_PATH = "/app/cookies.txt"
 # =========================
 
 ytdl_format_options = {
-    "format": "251/250/249/bestaudio",
+    "format": "bestaudio/best",
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
 
     "restrictfilenames": True,
@@ -117,17 +117,49 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if not data:
             raise Exception("Data lagu kosong.")
 
-        audio_url = data["url"]
+        if stream:
+            audio_url = None
 
-        if "requested_formats" in data:
-            audio_url = data["requested_formats"][0]["url"]
+            formats = data.get("formats", [])
 
-        filename = audio_url if stream else ytdl.prepare_filename(data)
+            # ambil audio-only stream terbaik
+            audio_formats = [
+                f for f in formats
+                if f.get("acodec") != "none"
+                   and f.get("vcodec") == "none"
+            ]
 
-        logger.debug(f"AUDIO URL = {filename}")
+            if not audio_formats:
+                raise Exception("Audio-only stream kagak ketemu.")
+
+            # ambil bitrate terbesar
+            best_audio = max(
+                audio_formats,
+                key=lambda f: f.get("abr") or 0
+            )
+
+            audio_url = best_audio["url"]
+
+            logger.debug(
+                f"[yt-dlp] Selected audio format | "
+                f"itag={best_audio.get('format_id')} "
+                f"ext={best_audio.get('ext')} "
+                f"abr={best_audio.get('abr')} "
+                f"acodec={best_audio.get('acodec')}"
+            )
+
+            filename = audio_url
+
+        else:
+            filename = ytdl.prepare_filename(data)
+
+        logger.debug(f"[yt-dlp] AUDIO URL = {filename}")
 
         return cls(
-            discord.FFmpegPCMAudio(filename, **ffmpeg_options),
+            discord.FFmpegPCMAudio(
+                filename,
+                **ffmpeg_options
+            ),
             data=data,
         )
 
