@@ -512,7 +512,7 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
                 logger.error(f"Lyrics fetch error: {e}")
                 return None
 
-    async def _auto_lyrics(interaction: discord.Interaction):
+    async def _auto_lyrics(interaction: discord.Interaction) -> tuple[Optional[str], Optional[str]]:
         player = players.get(interaction.guild_id)
         if not player or not player.current:
             return None, None
