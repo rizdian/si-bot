@@ -4,6 +4,7 @@ import asyncio
 
 from config import OWNER_USER_ID, AI_PERSONALITY
 
+MAINKAN_PATTERN = re.compile(r"^mainkan\s+(.+)", re.IGNORECASE)
 
 def is_manual_mention(message: discord.Message, user_id: int) -> bool:
     return f"<@{user_id}>" in message.content or f"<@!{user_id}>" in message.content
@@ -12,6 +13,28 @@ def register_message_events(client: discord.Client):
     @client.event
     async def on_message(message: discord.Message) -> None:
         if message.author.bot:
+            return
+
+        # ── "mainkan <judul/link>" trigger ──────────────────────────────
+        mainkan_match = MAINKAN_PATTERN.match(message.content.strip())
+        if mainkan_match:
+            search = mainkan_match.group(1).strip()
+            member = message.author
+
+            if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
+                await message.reply("❌ Lu harus join voice channel dulu lah!")
+                return
+
+            from commands.music import do_play
+            await do_play(
+                search=search,
+                guild=message.guild,
+                voice_channel=member.voice.channel,
+                send=message.channel.send,
+                channel=message.channel,
+                requester=member,
+                client=client,
+            )
             return
 
         # Logika untuk Owner Tag (Langit menjawab 1 kalimat)

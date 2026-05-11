@@ -608,15 +608,15 @@ class MusicPlayer:
 
             try:
                 if self.now_playing_message:
-                    await self.now_playing_message.edit(
-                        embed=embed,
-                        view=view,
-                    )
-                else:
-                    self.now_playing_message = await self.interaction.channel.send(
-                        embed=embed,
-                        view=view,
-                    )
+                    try:
+                        await self.now_playing_message.delete()
+                    except (discord.NotFound, discord.HTTPException):
+                        pass
+
+                self.now_playing_message = await self.interaction.channel.send(
+                    embed=embed,
+                    view=view,
+                )
             except Exception as e:
                 logger.error(f"Failed send now playing embed: {e}")
 
@@ -702,6 +702,97 @@ def spotify_to_queries(url: str) -> tuple[list[str], Optional[str]]:
 # Commands
 # =========================
 
+async def do_play(
+    search: str,
+    guild: discord.Guild,
+    voice_channel: discord.VoiceChannel,
+    send: callable,          # async fn(str) → sends a plain text reply
+    channel: discord.TextChannel,
+    requester: discord.Member,
+    client: discord.Client,
+) -> None:
+    """Core play logic, reusable by slash command and message trigger."""
+
+    # Connect / move to voice channel
+    if not guild.voice_client:
+        try:
+            await voice_channel.connect(self_deaf=True, self_mute=False, reconnect=True)
+        except asyncio.TimeoutError:
+            return await send("❌ Timeout connect ke voice channel Discord.")
+        except Exception as e:
+            return await send(f"❌ Gagal connect voice: {e}")
+    elif guild.voice_client.channel != voice_channel:
+        await guild.voice_client.move_to(voice_channel)
+        await guild.voice_client.edit(deafen=True, mute=False)
+
+    queries = [search]
+    info_message = None
+
+    if "spotify.com" in search:
+        try:
+            queries, info_message = spotify_to_queries(search)
+        except Exception as e:
+            return await send(f"❌ {e}")
+        if info_message:
+            await send(info_message)
+
+    # Build a fake interaction-like object for get_player
+    class _FakeInteraction:
+        def __init__(self):
+            self.guild = guild
+            self.guild_id = guild.id
+            self.user = requester
+            self.channel = channel
+            self.client = client
+
+    fake = _FakeInteraction()
+    player = get_player(fake)  # type: ignore[arg-type]
+    player.vc = guild.voice_client
+
+    for i, query in enumerate(queries):
+        try:
+            if i == 0:
+                await send(f"🔎 Nyari: **{query}**...")
+
+            result = await YTDLSource.from_url(
+                query,
+                loop=asyncio.get_running_loop(),
+                stream=True,
+            )
+
+            if isinstance(result, dict) and "entries" in result:
+                entries = [e for e in result["entries"] if e]
+                if entries:
+                    playlist_title = result.get("title", "YouTube Playlist")
+                    await channel.send(f"ℹ️ Menambahkan **{len(entries)}** lagu dari playlist YouTube: **{playlist_title}**")
+
+                for entry_idx, entry in enumerate(entries):
+                    try:
+                        source = await YTDLSource.create_source(entry, stream=True)
+                        await player.queue.put(source)
+                        if entry_idx == 0 and i == 0 and not player.current:
+                            await send(f"✅ Dapet! Siap diputer: **{source.title}**")
+                    except Exception as inner_e:
+                        logger.error(f"Error processing entry {entry_idx}: {inner_e}")
+                continue
+
+            source = result
+            await player.queue.put(source)
+
+            if i == 0:
+                if player.current:
+                    await send(f"✅ Ditambahin ke antrean: **{source.title}**")
+                else:
+                    await send(f"✅ Dapet! Siap diputer: **{source.title}**")
+
+        except Exception as e:
+            logger.error(f"Error processing query '{query}': {e}")
+            if i == 0:
+                await send(f"❌ Gagal muter **{query}**: {e}")
+            else:
+                await channel.send(f"❌ Gagal nambahin **{query}** ke antrean.")
+
+
 def register_music_commands(tree: app_commands.CommandTree, client: discord.Client):
     @tree.command(
         name="play",
@@ -717,97 +808,18 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
             return
 
         if not interaction.user.voice or not interaction.user.voice.channel:
-            return await interaction.followup.send(
-                "❌ Lu harus join voice channel dulu lah!"
-            )
+            return await interaction.followup.send("❌ Lu harus join voice channel dulu lah!")
 
         try:
-            voice_channel = interaction.user.voice.channel
-
-            if not interaction.guild.voice_client:
-                try:
-                    logger.info("Connecting to voice channel...")
-
-                    await voice_channel.connect(
-                        self_deaf=True,
-                        self_mute=False,
-                        reconnect=True,
-                    )
-                except asyncio.TimeoutError:
-                    return await interaction.followup.send(
-                        "❌ Timeout connect ke voice channel Discord."
-                    )
-                except Exception as e:
-                    return await interaction.followup.send(
-                        f"❌ Gagal connect voice: {e}"
-                    )
-            elif interaction.guild.voice_client.channel != voice_channel:
-                await interaction.guild.voice_client.move_to(voice_channel)
-                await interaction.guild.voice_client.edit(deafen=True, mute=False)
-
-            queries = [search]
-            info_message = None
-
-            if "spotify.com" in search:
-                queries, info_message = spotify_to_queries(search)
-
-                if info_message:
-                    await interaction.followup.send(info_message)
-
-            player = get_player(interaction)
-
-            for i, query in enumerate(queries):
-                try:
-                    if i == 0:
-                        await interaction.followup.send(f"🔎 Nyari: **{query}**...")
-
-                    result = await YTDLSource.from_url(
-                        query,
-                        loop=asyncio.get_running_loop(),
-                        stream=True,
-                    )
-
-                    # Jika hasil adalah playlist (dict yang punya 'entries')
-                    if isinstance(result, dict) and "entries" in result:
-                        entries = [e for e in result["entries"] if e]
-                        total_entries = len(entries)
-                        
-                        if total_entries > 0:
-                            playlist_title = result.get("title", "YouTube Playlist")
-                            await interaction.channel.send(f"ℹ️ Menambahkan **{total_entries}** lagu dari playlist YouTube: **{playlist_title}**")
-                        
-                        for entry_idx, entry in enumerate(entries):
-                            try:
-                                source = await YTDLSource.create_source(entry, stream=True)
-                                await player.queue.put(source)
-                                
-                                if entry_idx == 0 and i == 0 and not player.current:
-                                    await interaction.followup.send(f"✅ Dapet! Siap diputer: **{source.title}**")
-                            except Exception as inner_e:
-                                logger.error(f"Error processing entry {entry_idx}: {inner_e}")
-                        
-                        continue
-
-                    # Jika hasil adalah single source (objek YTDLSource)
-                    source = result
-                    await player.queue.put(source)
-
-                    if i == 0:
-                        if player.current:
-                            await interaction.followup.send(
-                                f"✅ Ditambahin ke antrean: **{source.title}**"
-                            )
-                        else:
-                            await interaction.followup.send(
-                                f"✅ Dapet! Siap diputer: **{source.title}**"
-                            )
-                except Exception as e:
-                    logger.error(f"Error processing query '{query}': {e}")
-                    if i == 0:
-                        await interaction.followup.send(f"❌ Gagal muter **{query}**: {e}")
-                    else:
-                        await interaction.channel.send(f"❌ Gagal nambahin **{query}** ke antrean.")
-
+            await do_play(
+                search=search,
+                guild=interaction.guild,
+                voice_channel=interaction.user.voice.channel,
+                send=interaction.followup.send,
+                channel=interaction.channel,
+                requester=interaction.user,
+                client=client,
+            )
         except Exception as e:
             logger.error(f"Play error: {e}")
             await interaction.followup.send(f"❌ Error pas mau muter: {e}")
