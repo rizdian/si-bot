@@ -25,18 +25,32 @@ COOKIE_PATH = "/app/cookies.txt"
 
 ytdl_format_options = {
     "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
+    "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
+
     "noplaylist": True,
     "nocheckcertificate": True,
     "ignoreerrors": False,
     "quiet": True,
     "no_warnings": True,
     "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
     "cookiefile": "/app/data/cookies.txt",
+
+    # JS runtime for youtube anti-bot
+    "js_runtimes": {
+        "node": {}
+    },
+
+    # EJS challenge solver
+    "remote_components": ["ejs:github"],
+
+    # safest client currently
     "extractor_args": {
         "youtube": {
-            "player_client": ["web"],
+            "player_client": ["web_creator", "android_vr", "web"],
         }
     },
+
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) "
