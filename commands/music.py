@@ -24,56 +24,42 @@ COOKIE_PATH = "/app/cookies.txt"
 # =========================
 
 ytdl_format_options = {
-    "format": "bestaudio/best",
-    "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
-
-    "restrictfilenames": True,
+    "format": "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio/best",
     "noplaylist": True,
     "nocheckcertificate": True,
     "ignoreerrors": False,
-
-    "logtostderr": False,
     "quiet": True,
     "no_warnings": True,
-
     "default_search": "ytsearch",
-    "source_address": "0.0.0.0",
-
-    # cookies
     "cookiefile": "/app/data/cookies.txt",
-
-    # JS runtime for youtube anti-bot
-    "js_runtimes": {
-        "node": {}
-    },
-
-    # EJS challenge solver
-    "remote_components": ["ejs:github"],
-
-    # safest client currently
     "extractor_args": {
         "youtube": {
-            "player_client": ["web"]
+            "player_client": ["web_creator", "android_vr", "web"],
         }
     },
-
     "http_headers": {
         "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "Mozilla/5.0 (X11; Linux x86_64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/124.0.0.0 Safari/537.36"
-        )
+            "Chrome/124.0 Safari/537.36"
+        ),
+        "Referer": "https://www.youtube.com/",
     },
 }
 
+
+_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0 Safari/537.36"
+)
 
 ffmpeg_options = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
         "-reconnect_delay_max 5 "
-        "-cookies 'CONSENT=YES+cb' "
-        "-user_agent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'"
+        f"-headers 'User-Agent: {_UA}\r\nReferer: https://www.youtube.com/\r\n'"
     ),
     "options": "-vn",
 }
@@ -128,10 +114,15 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
             requested_formats = data.get("requested_formats", [])
             formats = data.get("formats", [])
+            headers = data.get("http_headers", {})
 
             logger.debug(
                 f"[yt-dlp] requested_formats={len(requested_formats)} "
                 f"formats={len(formats)}"
+            )
+
+            logger.debug(
+                f"[yt-dlp] HTTP_HEADERS = {headers}"
             )
 
             # =========================
@@ -163,7 +154,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
             # =========================
             # PRIORITY 2
-            # formats audio-only
+            # formats audio detection
             # =========================
             if not audio_url:
                 logger.debug("[yt-dlp] Trying formats audio detection...")
@@ -187,21 +178,49 @@ class YTDLSource(discord.PCMVolumeTransformer):
                     f"[yt-dlp] audio_formats_found={len(audio_formats)}"
                 )
 
-                if audio_formats:
-                    best_audio = max(
+                # prioritaskan audio-only
+                audio_only = [
+                    f for f in audio_formats
+                    if f.get("vcodec") == "none"
+                ]
+
+                logger.debug(
+                    f"[yt-dlp] audio_only_found={len(audio_only)}"
+                )
+
+                selected = None
+
+                if audio_only:
+                    selected = max(
+                        audio_only,
+                        key=lambda f: f.get("abr") or 0
+                    )
+
+                    logger.debug(
+                        "[yt-dlp] Using audio-only stream"
+                    )
+
+                elif audio_formats:
+                    selected = max(
                         audio_formats,
                         key=lambda f: f.get("abr") or 0
                     )
 
-                    audio_url = best_audio.get("url")
+                    logger.warning(
+                        "[yt-dlp] No audio-only stream found. "
+                        "Fallback to progressive stream."
+                    )
+
+                if selected:
+                    audio_url = selected.get("url")
 
                     logger.debug(
-                        f"[yt-dlp] Selected best_audio | "
-                        f"itag={best_audio.get('format_id')} "
-                        f"ext={best_audio.get('ext')} "
-                        f"abr={best_audio.get('abr')} "
-                        f"acodec={best_audio.get('acodec')} "
-                        f"vcodec={best_audio.get('vcodec')} "
+                        f"[yt-dlp] Selected stream | "
+                        f"itag={selected.get('format_id')} "
+                        f"ext={selected.get('ext')} "
+                        f"abr={selected.get('abr')} "
+                        f"acodec={selected.get('acodec')} "
+                        f"vcodec={selected.get('vcodec')} "
                         f"url={audio_url}"
                     )
 
@@ -211,7 +230,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
             # =========================
             if not audio_url:
                 logger.warning(
-                    "[yt-dlp] No audio format found. "
+                    "[yt-dlp] No stream found. "
                     "Fallback to data['url']"
                 )
 
@@ -223,6 +242,30 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
             filename = audio_url
 
+            # =========================
+            # Dynamic FFmpeg Headers
+            # =========================
+            before_options = (
+                "-reconnect 1 "
+                "-reconnect_streamed 1 "
+                "-reconnect_delay_max 5 "
+            )
+
+            for key, value in headers.items():
+                before_options += (
+                    f'-headers "{key}: {value}\\r\\n" '
+                )
+
+            logger.debug(
+                f"[ffmpeg] before_options={before_options}"
+            )
+
+            ffmpeg_source = discord.FFmpegPCMAudio(
+                filename,
+                before_options=before_options,
+                options="-vn",
+            )
+
         else:
             filename = ytdl.prepare_filename(data)
 
@@ -231,13 +274,15 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 f"filename={filename}"
             )
 
+            ffmpeg_source = discord.FFmpegPCMAudio(
+                filename,
+                options="-vn",
+            )
+
         logger.debug(f"[yt-dlp] FINAL AUDIO URL = {filename}")
 
         return cls(
-            discord.FFmpegPCMAudio(
-                filename,
-                **ffmpeg_options
-            ),
+            ffmpeg_source,
             data=data,
         )
 
