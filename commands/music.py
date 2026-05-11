@@ -32,13 +32,16 @@ ytdl_format_options = {
     "extract_flat": False,
     "nocheckcertificate": True,
     "ignoreerrors": False,
+
     "cookiefile": COOKIE_PATH if os.path.exists(COOKIE_PATH) else None,
+
     "extractor_args": {
         "youtube": {
             "player_client": ["web_creator", "android_vr", "web"],
             "skip": ["hls"],
         }
     },
+
     "http_headers": {
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) "
@@ -137,8 +140,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
             if "Requested format is not available" in msg:
                 raise Exception(
-                    "Format lagu tidak tersedia. YouTube mungkin membatasi akses atau "
-                    "perlu update yt-dlp ke versi terbaru (2026.05.05+)."
+                    "Format lagu tidak tersedia. YouTube mungkin membatasi akses."
                 )
 
             raise

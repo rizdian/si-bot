@@ -2,6 +2,7 @@ services:
   bot:
     build: .
     container_name: si-bot
+
     environment:
       - DISCORD_TOKEN
       - LOG_CHANNEL_ID
@@ -14,9 +15,12 @@ services:
       - ROLE_GIRLS_ID
       - SPOTIFY_CLIENT_ID
       - SPOTIFY_CLIENT_SECRET
+
     restart: unless-stopped
+
     volumes:
-      - /home/ubuntu/discord-bot/cookies.txt:/app/cookies.txt:ro
+      - /home/ubuntu/discord-bot/data:/app/data
+
     logging:
       options:
         max-size: "10m"
