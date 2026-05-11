@@ -19,7 +19,7 @@ def _strip_afk_prefix(name: str) -> str:
 
 
 def register_afk_commands(tree: app_commands.CommandTree, client: discord.Client):
-    @tree.command(name="afk set", description="Set status AFK", guild=TEST_GUILD)
+    @tree.command(name="afk", description="Set status AFK", guild=TEST_GUILD)
     @app_commands.describe(reason="Alasan AFK (opsional)")
     async def afk(interaction: discord.Interaction, reason: Optional[str] = None) -> None:
         member = interaction.user
@@ -72,7 +72,7 @@ def register_afk_commands(tree: app_commands.CommandTree, client: discord.Client
 
         await interaction.response.send_message(msg)
 
-    @tree.command(name="afk list", description="Lihat daftar member yang lagi AFK", guild=TEST_GUILD)
+    @tree.command(name="afklist", description="Lihat daftar member yang lagi AFK", guild=TEST_GUILD)
     async def afklist(interaction: discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
