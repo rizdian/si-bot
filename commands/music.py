@@ -24,7 +24,7 @@ COOKIE_PATH = "/app/cookies.txt"
 # =========================
 
 ytdl_format_options = {
-    "format": "251/250/249/bestaudio",
+    "format": "bestaudio/best",
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
 
     "restrictfilenames": True,
