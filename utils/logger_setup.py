@@ -12,4 +12,4 @@ def setup_logger():
     )
 
     # DEBUG level khusus untuk bot & music, biar bisa trace yt-dlp detail
-    logging.getLogger("bot").setLevel(logging.DEBUG)
+    logging.getLogger("bot").setLevel(logging.INFO)

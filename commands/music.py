@@ -293,7 +293,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
                 options="-vn",
             )
 
-        logger.debug(f"[yt-dlp] FINAL AUDIO URL = {filename}")
+        logger.info(f"[yt-dlp] FINAL AUDIO URL = {filename}")
 
         return cls(
             ffmpeg_source,
