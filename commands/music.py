@@ -38,20 +38,25 @@ ytdl_format_options = {
     "logtostderr": False,
     "extractor_args": {
         "youtube": {
-            "player_client": ["android_vr", "web"],
+            "player_client": ["android", "web"],
             "skip": ["dash", "hls"],
         }
     },
-    "add_header": [
-        "User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-    ],
+    "http_headers": {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        )
+    },
 }
 
 ffmpeg_options = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5"
+        "-reconnect_delay_max 5 "
+        "-nostdin"
     ),
     "options": "-vn",
 }
@@ -295,7 +300,11 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
     )
     @app_commands.describe(search="URL YouTube/Spotify atau judul lagu")
     async def play(interaction: discord.Interaction, search: str):
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.NotFound:
+            await interaction.channel.send("❌ Interaksi expired, coba lagi deh. Bot lagi lag kayaknya.")
+            return
 
         if not interaction.user.voice or not interaction.user.voice.channel:
             return await interaction.followup.send(
@@ -306,7 +315,22 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
             voice_channel = interaction.user.voice.channel
 
             if not interaction.guild.voice_client:
-                await voice_channel.connect(self_deaf=True, self_mute=False)
+                try:
+                    logger.info("Connecting to voice channel...")
+
+                    await voice_channel.connect(
+                        self_deaf=True,
+                        self_mute=False,
+                        reconnect=True,
+                    )
+                except asyncio.TimeoutError:
+                    return await interaction.followup.send(
+                        "❌ Timeout connect ke voice channel Discord."
+                    )
+                except Exception as e:
+                    return await interaction.followup.send(
+                        f"❌ Gagal connect voice: {e}"
+                    )
             elif interaction.guild.voice_client.channel != voice_channel:
                 await interaction.guild.voice_client.move_to(voice_channel)
                 await interaction.guild.voice_client.edit(deafen=True, mute=False)
@@ -326,10 +350,10 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
                 try:
                     if i == 0:
                         await interaction.followup.send(f"🔎 Nyari: **{query}**...")
-                    
+
                     result = await YTDLSource.from_url(
                         query,
-                        loop=client.loop,
+                        loop=asyncio.get_running_loop(),
                         stream=True,
                     )
 
@@ -476,7 +500,7 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
                 "📭 Antrean kosong, kayak hati lu."
             )
 
-        upcoming = list(player.queue._queue)
+        upcoming = list(player.queue._queue.copy())
         fmt = ""
         if player.current:
             fmt += f"**Sekarang diputar:** {player.current.title}\n\n"
@@ -544,7 +568,11 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
         artist: Optional[str] = None,
         title: Optional[str] = None,
     ):
-        await interaction.response.defer()
+        try:
+            await interaction.response.defer()
+        except discord.NotFound:
+            await interaction.channel.send("❌ Interaksi expired, coba lagi deh. Bot lagi lag kayaknya.")
+            return
 
         if not artist and not title:
             artist, title = await _auto_lyrics(interaction)
