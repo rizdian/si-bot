@@ -24,7 +24,7 @@ COOKIE_PATH = "/app/cookies.txt"
 # =========================
 
 ytdl_format_options = {
-    "format": "bestaudio/best",
+    "format": "251/250/249/bestaudio",
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
 
     "restrictfilenames": True,
@@ -53,7 +53,7 @@ ytdl_format_options = {
     # safest client currently
     "extractor_args": {
         "youtube": {
-            "player_client": ["web"]
+            "player_client": ["tv_simply"]
         }
     },
 
@@ -71,9 +71,11 @@ ffmpeg_options = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5"
+        "-reconnect_delay_max 5 "
+        "-cookies 'CONSENT=YES+cb' "
+        "-user_agent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'"
     ),
-    "options": "-vn"
+    "options": "-vn",
 }
 
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
@@ -114,8 +116,16 @@ class YTDLSource(discord.PCMVolumeTransformer):
     async def create_source(cls, data, *, stream: bool = False):
         if not data:
             raise Exception("Data lagu kosong.")
-        
-        filename = data["url"] if stream else ytdl.prepare_filename(data)
+
+        audio_url = data["url"]
+
+        if "requested_formats" in data:
+            audio_url = data["requested_formats"][0]["url"]
+
+        filename = audio_url if stream else ytdl.prepare_filename(data)
+
+        logger.debug(f"AUDIO URL = {filename}")
+
         return cls(
             discord.FFmpegPCMAudio(filename, **ffmpeg_options),
             data=data,
