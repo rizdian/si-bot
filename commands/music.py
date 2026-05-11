@@ -575,9 +575,30 @@ class MusicPlayer:
 
         interaction.client.loop.create_task(self.player_loop())
 
+    async def _send_error(self, error):
+        logger.error(f"Player error: {error}")
+        try:
+            err_str = str(error)
+            if "403" in err_str or "Forbidden" in err_str:
+                msg = (
+                    "❌ **Gagal muter lagu** (403 Forbidden).\n"
+                    "Silahkan ulang pake `/play judul artis` ya."
+                )
+            else:
+                msg = f"❌ **Error pas muter lagu:** {err_str}\nSilahkan ulang pake `/play judul artis` ya."
+            if self.now_playing_message:
+                try:
+                    await self.now_playing_message.channel.send(msg)
+                except Exception:
+                    pass
+            else:
+                await self.interaction.channel.send(msg)
+        except Exception as e:
+            logger.error(f"Failed to send player error message: {e}")
+
     def handle_next(self, error):
         if error:
-            logger.error(f"Player error: {error}")
+            self.interaction.client.loop.create_task(self._send_error(error))
 
         self.next.set()
 
