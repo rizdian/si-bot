@@ -53,7 +53,7 @@ ytdl_format_options = {
     # safest client currently
     "extractor_args": {
         "youtube": {
-            "player_client": ["tv_simply"]
+            "player_client": ["web"]
         }
     },
 
