@@ -358,9 +358,197 @@ class YTDLSource(discord.PCMVolumeTransformer):
 
         return await cls.create_source(data, stream=stream)
 
+# =========================
+# UI / NOW PLAYING EMBED
+# =========================
+
+def build_now_playing_embed(
+    source: YTDLSource,
+    requester: discord.Member | discord.User,
+    voice_channel: discord.VoiceChannel,
+) -> discord.Embed:
+
+    title = source.data.get("title", "Unknown Title")
+
+    duration = source.data.get("duration")
+    duration_text = "LIVE"
+
+    if duration:
+        minutes, seconds = divmod(duration, 60)
+        hours, minutes = divmod(minutes, 60)
+
+        if hours > 0:
+            duration_text = f"{hours:02}:{minutes:02}:{seconds:02}"
+        else:
+            duration_text = f"{minutes:02}:{seconds:02}"
+
+    uploader = source.data.get("uploader")
+    thumbnail = source.data.get("thumbnail")
+    webpage_url = source.data.get("webpage_url")
+
+    embed = discord.Embed(
+        description=(
+            "## Now playing\n"
+            f"### [{title}]({webpage_url}) ` {duration_text} `\n\n"
+            f"> Requested by {requester.mention}\n"
+            f"> Connected in 🔊 **{voice_channel.name}**"
+        ),
+        color=discord.Color.from_rgb(88, 101, 242),
+    )
+
+    if uploader:
+        embed.set_author(
+            name=uploader,
+            icon_url=requester.display_avatar.url
+        )
+
+    if thumbnail:
+        embed.set_thumbnail(url=thumbnail)
+
+    embed.set_footer(
+        text="Music powered by yt-dlp + FFmpeg"
+    )
+
+    return embed
+
+
+# =========================
+# PLAYER VIEW (BUTTONS)
+# =========================
+
+class MusicControllerView(discord.ui.View):
+    def __init__(self, player: "MusicPlayer"):
+        super().__init__(timeout=None)
+        self.player = player
+
+    @discord.ui.button(
+        label="Pause",
+        emoji="⏸️",
+        style=discord.ButtonStyle.secondary,
+    )
+    async def pause_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        vc = interaction.guild.voice_client
+
+        if not vc:
+            return await interaction.response.send_message(
+                "❌ Bot kagak ada di VC.",
+                ephemeral=True,
+            )
+
+        if vc.is_paused():
+            vc.resume()
+
+            button.label = "Pause"
+            button.emoji = "⏸️"
+
+            await interaction.response.edit_message(view=self)
+
+        else:
+            vc.pause()
+
+            button.label = "Resume"
+            button.emoji = "▶️"
+
+            await interaction.response.edit_message(view=self)
+
+    @discord.ui.button(
+        label="Skip",
+        emoji="⏭️",
+        style=discord.ButtonStyle.secondary,
+    )
+    async def skip_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        vc = interaction.guild.voice_client
+
+        if vc and vc.is_playing():
+            vc.stop()
+
+        await interaction.response.send_message(
+            "⏭️ Lagu diskip.",
+            ephemeral=True,
+        )
+
+    @discord.ui.button(
+        label="Stop",
+        emoji="⏹️",
+        style=discord.ButtonStyle.danger,
+    )
+    async def stop_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        vc = interaction.guild.voice_client
+
+        if vc:
+            vc.stop()
+            await vc.disconnect()
+
+        if interaction.guild_id in players:
+            players.pop(interaction.guild_id)
+
+        await interaction.response.edit_message(
+            content="👋 Playback dihentikan.",
+            embed=None,
+            view=None,
+        )
+
+    @discord.ui.button(
+        label="Queue",
+        emoji="📜",
+        style=discord.ButtonStyle.primary,
+    )
+    async def queue_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        player = players.get(interaction.guild_id)
+
+        if not player:
+            return await interaction.response.send_message(
+                "📭 Queue kosong.",
+                ephemeral=True,
+            )
+
+        upcoming = list(player.queue._queue)
+
+        if not upcoming:
+            return await interaction.response.send_message(
+                "📭 Queue kosong.",
+                ephemeral=True,
+            )
+
+        text = "\n".join(
+            f"{idx+1}. {item.title}"
+            for idx, item in enumerate(upcoming[:10])
+        )
+
+        embed = discord.Embed(
+            title="📜 Queue",
+            description=text,
+            color=discord.Color.blurple(),
+        )
+
+        await interaction.response.send_message(
+            embed=embed,
+            ephemeral=True,
+        )
+
 
 # =========================
 # Music Player
+# =========================
+
+# =========================
+# UPDATE MusicPlayer
 # =========================
 
 class MusicPlayer:
@@ -371,11 +559,14 @@ class MusicPlayer:
         self.current: Optional[YTDLSource] = None
         self.vc: Optional[discord.VoiceClient] = interaction.guild.voice_client
 
+        self.now_playing_message: Optional[discord.Message] = None
+
         interaction.client.loop.create_task(self.player_loop())
 
     def handle_next(self, error):
         if error:
             logger.error(f"Player error: {error}")
+
         self.next.set()
 
     async def player_loop(self):
@@ -398,13 +589,36 @@ class MusicPlayer:
             self.vc.play(
                 source,
                 after=lambda e: self.interaction.client.loop.call_soon_threadsafe(
-                    self.handle_next, e
+                    self.handle_next,
+                    e,
                 ),
             )
 
-            await self.interaction.channel.send(
-                f"🎶 **Sekarang diputar:** {source.title}"
+            # =========================
+            # NOW PLAYING EMBED
+            # =========================
+
+            embed = build_now_playing_embed(
+                source=source,
+                requester=self.interaction.user,
+                voice_channel=self.vc.channel,
             )
+
+            view = MusicControllerView(self)
+
+            try:
+                if self.now_playing_message:
+                    await self.now_playing_message.edit(
+                        embed=embed,
+                        view=view,
+                    )
+                else:
+                    self.now_playing_message = await self.interaction.channel.send(
+                        embed=embed,
+                        view=view,
+                    )
+            except Exception as e:
+                logger.error(f"Failed send now playing embed: {e}")
 
             await self.next.wait()
 
@@ -414,7 +628,6 @@ class MusicPlayer:
     async def destroy(self):
         if self.vc and self.vc.is_connected():
             await self.vc.disconnect()
-
 
 players: dict[int, MusicPlayer] = {}
 
