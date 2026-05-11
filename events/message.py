@@ -87,7 +87,7 @@ def register_message_events(client: discord.Client):
             async for msg in message.channel.history(limit=5, before=message):
                 author_name = msg.author.display_name
                 # Jika asisten yang jawab, pakai nama bot atau identitasnya
-                name = "Lu (Anak Moderator)" if msg.author.id == client.user.id else author_name
+                name = "Lu (Tukang Ikut Campur)" if msg.author.id == client.user.id else author_name
                 history_lines.append(f"- {name}: {msg.content}")
             history_lines.reverse()
             
@@ -143,7 +143,7 @@ def register_message_events(client: discord.Client):
                 content = re.sub(r'<@!?%s>' % client.user.id, '', content).strip()
                 if content:
                     author_name = msg.author.display_name
-                    name = "Lu (Anak Moderator)" if msg.author.id == client.user.id else author_name
+                    name = "Lu (Tukang Ikut Campur)" if msg.author.id == client.user.id else author_name
                     history_lines.append(f"- {name}: {content}")
             history_lines.reverse()
             

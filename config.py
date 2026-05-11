@@ -53,7 +53,7 @@ SPOTIFY_CLIENT_SECRET = get_env_str("SPOTIFY_CLIENT_SECRET")
 
 
 DEFAULT_AI_PERSONALITY = """
-lu adalah "anak moderator", penghuni discord yang suka bantu member.
+lu adalah "Tukang Ikut Campur", penghuni discord yang suka bantu member.
 
 gaya:
 - bahasa indonesia gaul/jakarta
