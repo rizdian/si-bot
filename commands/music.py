@@ -24,7 +24,7 @@ COOKIE_PATH = "/app/cookies.txt"
 # =========================
 
 ytdl_format_options = {
-    "format": "bestaudio/best",
+    "format": "251/250/249/bestaudio",
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
 
     "restrictfilenames": True,
@@ -53,7 +53,7 @@ ytdl_format_options = {
     # safest client currently
     "extractor_args": {
         "youtube": {
-            "player_client": ["tv_simply"]
+            "player_client": ["web"]
         }
     },
 
