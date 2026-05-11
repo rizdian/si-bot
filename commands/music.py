@@ -106,6 +106,9 @@ class YTDLSource(discord.PCMVolumeTransformer):
     async def from_url(cls, url: str, *, loop=None, stream: bool = False):
         loop = loop or asyncio.get_event_loop()
 
+        logger.debug(f"[yt-dlp] from_url called | url={url!r} stream={stream}")
+        logger.debug(f"[yt-dlp] format={ytdl_format_options.get('format')} | player_client={ytdl_format_options.get('extractor_args', {}).get('youtube', {}).get('player_client')} | cookiefile={ytdl_format_options.get('cookiefile')}")
+
         try:
             data = await loop.run_in_executor(
                 None,
@@ -113,11 +116,11 @@ class YTDLSource(discord.PCMVolumeTransformer):
             )
         except Exception as e:
             logger.error(f"❌ yt-dlp error: {e}")
+            logger.error(f"[yt-dlp] FULL ERROR | url={url!r} | type={type(e).__name__} | msg={str(e)}")
             msg = str(e)
 
             if (
-                "Sign in to confirm you’re not a bot" in msg
-                or "Sign in to confirm you're not a bot" in msg
+                "Sign in to confirm you're not a bot" in msg
                 or "YouTube memblokir permintaan ini" in msg
                 or "not a bot" in msg.lower()
             ):
@@ -143,17 +146,18 @@ class YTDLSource(discord.PCMVolumeTransformer):
         if not data:
             raise Exception("Data lagu kosong. YouTube/yt-dlp kagak ngasih hasil.")
 
+        logger.debug(f"[yt-dlp] extract_info OK | id={data.get('id')} title={data.get('title')!r} extractor={data.get('extractor')} formats_count={len(data.get('formats', []))}")
+
         if "entries" in data:
             entries = [entry for entry in data["entries"] if entry]
             if not entries:
                 raise Exception("Playlist/search result kosong.")
-            
-            # Jika ini playlist dan bukan hasil pencarian, kita kembalikan semua data
-            # Biarkan pemanggil (play command) yang memutuskan mau diapain
+
             if data.get("_type") == "playlist":
                 return data
-                
+
             data = entries[0]
+            logger.debug(f"[yt-dlp] using first entry | id={data.get('id')} title={data.get('title')!r}")
 
         return await cls.create_source(data, stream=stream)
 

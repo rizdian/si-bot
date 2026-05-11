@@ -10,3 +10,6 @@ def setup_logger():
             logging.StreamHandler(sys.stdout)  # penting untuk Docker
         ],
     )
+
+    # DEBUG level khusus untuk bot & music, biar bisa trace yt-dlp detail
+    logging.getLogger("bot").setLevel(logging.DEBUG)
