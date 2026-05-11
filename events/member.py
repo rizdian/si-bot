@@ -39,7 +39,7 @@ def register_member_events(client: discord.Client):
                         {"role": "system", "content": WELCOME_PROMPT},
                         {"role": "user", "content": prompt}
                     ]
-                    welcome_msg = await ask_openrouter(messages)
+                    welcome_msg = await ask_openrouter(client.ai_session, messages)
                     msg = await channel.send(welcome_msg)
                     
                     # Tambah reaction
