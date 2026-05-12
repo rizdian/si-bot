@@ -111,6 +111,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
         self.data = data
         self.title = data.get("title", "Unknown Title")
         self.url = data.get("url")
+        self.webpage_url = data.get("webpage_url")
         self.requester = None
 
     @classmethod
@@ -554,6 +555,46 @@ class MusicControllerView(discord.ui.View):
             ephemeral=True,
         )
 
+    @discord.ui.button(
+        label="Loop: Off",
+        emoji="🔁",
+        style=discord.ButtonStyle.secondary,
+    )
+    async def loop_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ):
+        player = players.get(interaction.guild_id)
+
+        if not player:
+            return await interaction.response.send_message(
+                "❌ Kagak ada player aktif.",
+                ephemeral=True,
+            )
+
+        modes = [MusicPlayer.LOOP_OFF, MusicPlayer.LOOP_TRACK, MusicPlayer.LOOP_QUEUE]
+        labels = ["Loop: Off", "Loop: Track", "Loop: Queue"]
+        emojis = ["🔁", "🔂", "🔁"]
+        colors = [
+            discord.ButtonStyle.secondary,
+            discord.ButtonStyle.success,
+            discord.ButtonStyle.success,
+        ]
+
+        current_idx = modes.index(player.loop_mode)
+        next_idx = (current_idx + 1) % len(modes)
+
+        player.loop_mode = modes[next_idx]
+        button.label = labels[next_idx]
+        button.emoji = emojis[next_idx]
+        button.style = colors[next_idx]
+
+        if modes[next_idx] == MusicPlayer.LOOP_OFF:
+            player._played_sources.clear()
+
+        await interaction.response.edit_message(view=self)
+
 
 # =========================
 # Music Player
@@ -564,6 +605,10 @@ class MusicControllerView(discord.ui.View):
 # =========================
 
 class MusicPlayer:
+    LOOP_OFF = "off"
+    LOOP_TRACK = "track"
+    LOOP_QUEUE = "queue"
+
     def __init__(self, interaction: discord.Interaction):
         self.interaction = interaction
         self.queue: asyncio.Queue[YTDLSource] = asyncio.Queue()
@@ -572,6 +617,9 @@ class MusicPlayer:
         self.vc: Optional[discord.VoiceClient] = interaction.guild.voice_client
 
         self.now_playing_message: Optional[discord.Message] = None
+
+        self.loop_mode: str = self.LOOP_OFF
+        self._played_sources: list[YTDLSource] = []
 
         interaction.client.loop.create_task(self.player_loop())
 
@@ -608,6 +656,20 @@ class MusicPlayer:
         while not self.interaction.client.is_closed():
             self.next.clear()
 
+            if self.queue.empty() and self._played_sources and self.loop_mode == self.LOOP_QUEUE:
+                for src in self._played_sources:
+                    try:
+                        new_source = await YTDLSource.from_url(
+                            src.webpage_url or src.title,
+                            loop=self.interaction.client.loop,
+                            stream=True,
+                        )
+                        new_source.requester = src.requester
+                        await self.queue.put(new_source)
+                    except Exception as e:
+                        logger.error(f"Loop queue re-fetch error for '{src.title}': {e}")
+                self._played_sources.clear()
+
             try:
                 source = await self.queue.get()
             except asyncio.CancelledError:
@@ -638,6 +700,14 @@ class MusicPlayer:
                 voice_channel=self.vc.channel,
             )
 
+            loop_labels = {
+                self.LOOP_TRACK: "🔁 Track",
+                self.LOOP_QUEUE: "🔁 Queue",
+            }
+            loop_text = loop_labels.get(self.loop_mode)
+            if loop_text:
+                embed.set_footer(text=f"{loop_text} | Music powered by yt-dlp + FFmpeg")
+
             view = MusicControllerView(self)
 
             try:
@@ -657,6 +727,21 @@ class MusicPlayer:
             await self.next.wait()
 
             source.cleanup()
+
+            if self.loop_mode == self.LOOP_TRACK:
+                try:
+                    loop_source = await YTDLSource.from_url(
+                        source.webpage_url or source.title,
+                        loop=self.interaction.client.loop,
+                        stream=True,
+                    )
+                    loop_source.requester = source.requester
+                    await self.queue.put(loop_source)
+                except Exception as e:
+                    logger.error(f"Loop track re-fetch error: {e}")
+            elif self.loop_mode == self.LOOP_QUEUE:
+                self._played_sources.append(source)
+
             self.current = None
 
     async def destroy(self):
@@ -978,7 +1063,50 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
             description=fmt,
         )
 
+        if player.loop_mode != MusicPlayer.LOOP_OFF:
+            loop_labels = {
+                MusicPlayer.LOOP_TRACK: "🔂 Track Loop",
+                MusicPlayer.LOOP_QUEUE: "🔁 Queue Loop",
+            }
+            embed.set_footer(text=loop_labels.get(player.loop_mode, ""))
+
         await interaction.response.send_message(embed=embed)
+
+    @tree.command(
+        name="loop",
+        description="Atur mode pengulangan: off, track (1 lagu), atau queue (semua)",
+        guild=TEST_GUILD,
+    )
+    @app_commands.describe(mode="Pilih mode loop")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="Off", value="off"),
+        app_commands.Choice(name="Track (ulang 1 lagu)", value="track"),
+        app_commands.Choice(name="Queue (ulang semua)", value="queue"),
+    ])
+    async def loop_cmd(interaction: discord.Interaction, mode: str):
+        if interaction.guild_id not in players:
+            return await interaction.response.send_message(
+                "❌ Kagak ada player aktif. Putar lagu dulu pake `/play`."
+            )
+
+        player = players[interaction.guild_id]
+
+        if mode not in (MusicPlayer.LOOP_OFF, MusicPlayer.LOOP_TRACK, MusicPlayer.LOOP_QUEUE):
+            return await interaction.response.send_message("❌ Mode kagak valid.")
+
+        player.loop_mode = mode
+
+        if mode == MusicPlayer.LOOP_OFF:
+            player._played_sources.clear()
+
+        labels = {
+            MusicPlayer.LOOP_OFF: ("⏹️", "Loop dimatiin"),
+            MusicPlayer.LOOP_TRACK: ("🔂", "Loop track nyala — lagunya bakal diulang terus"),
+            MusicPlayer.LOOP_QUEUE: ("🔁", "Loop queue nyala — semua lagu bakal diulang dari awal"),
+        }
+        emoji, text = labels[mode]
+
+        await interaction.response.send_message(f"{emoji} {text}")
 
     async def _fetch_lyrics(artist: str, title: str) -> Optional[str]:
         url = f"https://api.lyrics.ovh/v1/{quote(artist)}/{quote(title)}"
