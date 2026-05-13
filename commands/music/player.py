@@ -20,6 +20,43 @@ _LOOP_COLORS = (
 )
 
 
+_QUEUE_PAGE_SIZE = 10
+
+
+class QueuePaginationView(discord.ui.View):
+    def __init__(self, upcoming: list):
+        super().__init__(timeout=60)
+        self.upcoming = upcoming
+        self.page = 0
+        self.max_page = max(0, (len(upcoming) - 1) // _QUEUE_PAGE_SIZE)
+
+    def build_embed(self) -> discord.Embed:
+        start = self.page * _QUEUE_PAGE_SIZE
+        end = start + _QUEUE_PAGE_SIZE
+        text = "\n".join(
+            f"{i + 1}. {item.title}" for i, item in enumerate(self.upcoming[start:end], start=start)
+        )
+        return discord.Embed(
+            title=f"📜 Queue ({len(self.upcoming)} lagu)",
+            description=text,
+            color=discord.Color.blurple(),
+        ).set_footer(text=f"Halaman {self.page + 1}/{self.max_page + 1}")
+
+    @discord.ui.button(label="⬅️", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page <= 0:
+            return await interaction.response.defer()
+        self.page -= 1
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="➡️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if self.page >= self.max_page:
+            return await interaction.response.defer()
+        self.page += 1
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+
 class MusicControllerView(discord.ui.View):
     def __init__(self, player: "MusicPlayer"):
         super().__init__(timeout=None)
@@ -79,9 +116,9 @@ class MusicControllerView(discord.ui.View):
                 embed=warning_embed("📭 Queue kosong."), ephemeral=True,
             )
 
-        text = "\n".join(f"{i + 1}. {item.title}" for i, item in enumerate(upcoming[:10]))
-        embed = discord.Embed(title="📜 Queue", description=text, color=discord.Color.blurple())
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        view = QueuePaginationView(upcoming)
+        embed = view.build_embed()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(label="Loop: Off", emoji="🔁", style=discord.ButtonStyle.secondary)
     async def loop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
