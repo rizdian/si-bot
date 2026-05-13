@@ -4,8 +4,8 @@ from typing import Optional
 
 import discord
 
-from .source import YTDLSource
-from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed
+from .source import YTDLSource, get_related_video_url
+from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 
 logger = logging.getLogger("bot")
 
@@ -103,6 +103,27 @@ class MusicControllerView(discord.ui.View):
 
         await interaction.response.edit_message(view=self)
 
+    @discord.ui.button(label="Autoplay: Off", emoji="🔀", style=discord.ButtonStyle.secondary)
+    async def autoplay_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = players.get(interaction.guild_id)
+        if not player:
+            return await interaction.response.send_message(
+                embed=error_embed("Tidak ada player aktif."), ephemeral=True,
+            )
+
+        player.autoplay = not player.autoplay
+
+        if player.autoplay:
+            button.label = "Autoplay: On"
+            button.emoji = "🔀"
+            button.style = discord.ButtonStyle.success
+        else:
+            button.label = "Autoplay: Off"
+            button.emoji = "🔀"
+            button.style = discord.ButtonStyle.secondary
+
+        await interaction.response.edit_message(view=self)
+
 
 class MusicPlayer:
     LOOP_OFF = "off"
@@ -117,6 +138,8 @@ class MusicPlayer:
         self.vc: Optional[discord.VoiceClient] = interaction.guild.voice_client
         self.now_playing_message: Optional[discord.Message] = None
         self.loop_mode: str = self.LOOP_OFF
+        self.autoplay: bool = False
+        self._last_source: Optional[YTDLSource] = None
         self._played_sources: list[YTDLSource] = []
 
         interaction.client.loop.create_task(self.player_loop())
@@ -147,6 +170,9 @@ class MusicPlayer:
             self.next.clear()
             await self._refill_queue_if_looping()
 
+            if self.queue.empty() and self.autoplay and self._last_source:
+                await self._autoplay_related()
+
             try:
                 source = await self.queue.get()
             except asyncio.CancelledError:
@@ -170,6 +196,7 @@ class MusicPlayer:
             source.cleanup()
 
             await self._handle_loop_after_play(source)
+            self._last_source = source
             self.current = None
 
     async def _refill_queue_if_looping(self):
@@ -188,14 +215,43 @@ class MusicPlayer:
                 logger.error("Loop queue re-fetch error for '%s': %s", src.title, e)
         self._played_sources.clear()
 
+    async def _autoplay_related(self):
+        last_source = self._last_source
+        if not last_source:
+            return
+
+        related_url = await get_related_video_url(last_source.data)
+        if not related_url:
+            logger.warning("Autoplay: no related videos found for '%s'", last_source.title)
+            return
+
+        try:
+            source = await YTDLSource.from_url(
+                related_url,
+                loop=self.interaction.client.loop,
+                stream=True,
+            )
+            source.requester = self.interaction.guild.me
+            await self.queue.put(source)
+            logger.info("Autoplay: enqueued '%s'", source.title)
+
+            target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
+            await target.send(
+                embed=info_embed(f"🔀 **Autoplay:** {source.title}")
+            )
+        except Exception as e:
+            logger.error("Autoplay error for '%s': %s", related_url, e)
+
     async def _send_now_playing(self, source: YTDLSource):
         requester = source.requester or self.interaction.user
         embed = build_now_playing_embed(source, requester, self.vc.channel)
 
         loop_labels = {self.LOOP_TRACK: "🔁 Track", self.LOOP_QUEUE: "🔁 Queue"}
         loop_text = loop_labels.get(self.loop_mode)
-        if loop_text:
-            embed.set_footer(text=f"{loop_text} | Music powered by yt-dlp + FFmpeg")
+        autoplay_text = "🔀 Autoplay" if self.autoplay else None
+        parts = [t for t in [loop_text, autoplay_text] if t]
+        if parts:
+            embed.set_footer(text=" | ".join(parts) + " | Music powered by yt-dlp + FFmpeg")
 
         view = MusicControllerView(self)
 

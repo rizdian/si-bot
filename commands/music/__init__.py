@@ -185,6 +185,34 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
             embed=success_embed(f"{emoji} {text}")
         )
 
+    @tree.command(
+        name="autoplay",
+        description="Nyalakan/matikan autoplay (otomatis putar lagu terkait)",
+        guild=TEST_GUILD,
+    )
+    @app_commands.describe(mode="Nyalakan atau matikan autoplay")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="On", value="on"),
+        app_commands.Choice(name="Off", value="off"),
+    ])
+    async def autoplay_cmd(interaction: discord.Interaction, mode: str):
+        if interaction.guild_id not in players:
+            return await interaction.response.send_message(
+                embed=error_embed("Tidak ada player aktif. Putar lagu dulu.")
+            )
+
+        player = players[interaction.guild_id]
+        player.autoplay = mode == "on"
+
+        if player.autoplay:
+            await interaction.response.send_message(
+                embed=success_embed("🔀 Autoplay **aktif** — lagu terkait akan diputar otomatis saat queue kosong.")
+            )
+        else:
+            await interaction.response.send_message(
+                embed=success_embed("🔀 Autoplay **dimatikan**.")
+            )
+
     @tree.command(name="lyrics", description="Cari lirik lagu", guild=TEST_GUILD)
     @app_commands.describe(
         artist="Nama artis (opsional jika sedang memutar lagu)",

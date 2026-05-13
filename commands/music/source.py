@@ -156,3 +156,14 @@ class YTDLSource(discord.PCMVolumeTransformer):
             data = entries[0]
 
         return await cls.create_source(data, stream=stream)
+
+
+async def get_related_video_url(data: dict, loop=None) -> str | None:
+    related = data.get("related_videos")
+    if not related:
+        return None
+    for video in related:
+        video_id = video.get("id")
+        if video_id:
+            return f"https://www.youtube.com/watch?v={video_id}"
+    return None
