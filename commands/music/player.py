@@ -6,6 +6,7 @@ import discord
 
 from .source import YTDLSource, get_related_video_url
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
+from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
 
 logger = logging.getLogger("bot")
 
@@ -123,6 +124,34 @@ class MusicControllerView(discord.ui.View):
             button.style = discord.ButtonStyle.secondary
 
         await interaction.response.edit_message(view=self)
+
+    @discord.ui.button(label="Lyrics", emoji="🎤", style=discord.ButtonStyle.secondary)
+    async def lyrics_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = players.get(interaction.guild_id)
+        if not player or not player.current:
+            return await interaction.response.send_message(
+                embed=error_embed("Tidak ada lagu yang sedang diputar."), ephemeral=True,
+            )
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        artist, title = extract_artist_title(player)
+        if not artist or not title:
+            return await interaction.followup.send(
+                embed=error_embed("Gagal mengenali judul/artis dari lagu ini."), ephemeral=True,
+            )
+
+        lyrics = await fetch_lyrics(artist, title)
+        if not lyrics:
+            return await interaction.followup.send(
+                embed=warning_embed(f"Lirik tidak ditemukan untuk **{artist} - {title}**."), ephemeral=True,
+            )
+
+        await send_lyrics(
+            lambda **kwargs: interaction.followup.send(**kwargs, ephemeral=True),
+            f"{artist} - {title}",
+            lyrics,
+        )
 
 
 class MusicPlayer:
