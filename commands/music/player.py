@@ -133,22 +133,22 @@ class MusicControllerView(discord.ui.View):
                 embed=error_embed("Tidak ada lagu yang sedang diputar."), ephemeral=True,
             )
 
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        await interaction.response.defer(thinking=True)
 
         artist, title = extract_artist_title(player)
         if not artist or not title:
             return await interaction.followup.send(
-                embed=error_embed("Gagal mengenali judul/artis dari lagu ini."), ephemeral=True,
+                embed=error_embed("Gagal mengenali judul/artis dari lagu ini."),
             )
 
         lyrics = await fetch_lyrics(artist, title)
         if not lyrics:
             return await interaction.followup.send(
-                embed=warning_embed(f"Lirik tidak ditemukan untuk **{artist} - {title}**."), ephemeral=True,
+                embed=warning_embed(f"Lirik tidak ditemukan untuk **{artist} - {title}**."),
             )
 
         await send_lyrics(
-            lambda **kwargs: interaction.followup.send(**kwargs, ephemeral=True),
+            lambda **kwargs: interaction.followup.send(**kwargs),
             f"{artist} - {title}",
             lyrics,
         )
