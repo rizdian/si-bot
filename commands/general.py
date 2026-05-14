@@ -194,8 +194,11 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
         )
 
     @tree.command(name="join", description="Bot join ke voice channel kamu", guild=TEST_GUILD)
-    async def join(interaction: discord.Interaction) -> None:
-        # pastikan di server
+    @discord.app_commands.describe(channel="Voice channel target (khusus owner)")
+    async def join(
+        interaction: discord.Interaction,
+        channel: discord.VoiceChannel | None = None,
+    ) -> None:
         if interaction.guild is None:
             await interaction.response.send_message(
                 "❌ Command ini hanya bisa dipakai di server.",
@@ -203,31 +206,37 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
             )
             return
 
+        is_owner = interaction.user.id == OWNER_USER_ID
         member = interaction.user
 
-        # pastikan user adalah member & ada di voice
-        if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
-            await interaction.response.send_message(
-                "❌ Kamu harus berada di voice channel!",
-                ephemeral=True
-            )
-            return
-
-        channel = member.voice.channel
+        if is_owner and channel is not None:
+            target = channel
+        else:
+            if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
+                if is_owner:
+                    await interaction.response.send_message(
+                        "❌ Kamu tidak sedang di voice channel, dan tidak menyebutkan channel target!",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        "❌ Kamu harus berada di voice channel!",
+                        ephemeral=True
+                    )
+                return
+            target = member.voice.channel
 
         try:
             vc = interaction.guild.voice_client
 
-            # kalau sudah connect → pindah channel
             if vc and vc.is_connected():
-                await vc.move_to(channel)
+                await vc.move_to(target)
                 await vc.edit(deafen=True, mute=False)
             else:
-                # connect + langsung deaf, pastikan kaga mute
-                vc = await channel.connect(self_deaf=True, self_mute=False)
+                vc = await target.connect(self_deaf=True, self_mute=False)
 
             await interaction.response.send_message(
-                f"🔊 Join ke **{channel.name}** (Deafened & Unmuted)",
+                f"🔊 Join ke **{target.name}** (Deafened & Unmuted)",
                 ephemeral=True
             )
 
