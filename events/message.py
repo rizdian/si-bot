@@ -2,7 +2,7 @@ import discord
 import re
 import asyncio
 
-from config import OWNER_USER_ID, AI_PERSONALITY
+from config import OWNER_USER_ID, AI_PERSONALITY, IS_OWNER_INACTIVE
 from utils.afk import is_afk, remove_afk, get_afk, format_duration
 
 MAINKAN_PATTERN = re.compile(r"^mainkan\s+(.+)", re.IGNORECASE)
@@ -94,6 +94,8 @@ def register_message_events(client: discord.Client):
             history_text = "\n".join(history_lines) if history_lines else "Gak ada obrolan sebelumnya."
 
             prompt = message.content
+
+            owner_unavailable = "\n\n[KONTEKS PENTING: Owner sedang tidak available/tidak online. Jawab sebagai perwakilan owner bahwa owner sedang tidak bisa merespons.]" if IS_OWNER_INACTIVE else ""
             
             # Tambahkan info tentang pengirim dan target mention untuk tag
             author_info = f"- {message.author.display_name} (ID: {message.author.id})"
@@ -103,7 +105,7 @@ def register_message_events(client: discord.Client):
             owner_info = f"- {owner_name} (ID: {OWNER_USER_ID})"
 
             # Tambahkan instruksi khusus agar jawaban hanya 1 kalimat
-            instruction = f"\n\n(Catatan: Jawab pesan ini hanya dalam 1 kalimat saja karena kamu sedang menanggapi mention ke Owner. Ini histori singkatnya:\n{history_text}\n\nKonteks User:\n{author_info}\n{owner_info})"
+            instruction = f"\n\n(Catatan: Jawab pesan ini hanya dalam 1 kalimat saja karena kamu sedang menanggapi mention ke Owner. Ini histori singkatnya:\n{history_text}\n\nKonteks User:\n{author_info}\n{owner_info}){owner_unavailable}"
             
             messages = [
                 {"role": "system", "content": AI_PERSONALITY},

@@ -15,6 +15,7 @@ services:
       - ROLE_GIRLS_ID
       - SPOTIFY_CLIENT_ID
       - SPOTIFY_CLIENT_SECRET
+      - IS_OWNER_INACTIVE
 
     restart: unless-stopped
 
