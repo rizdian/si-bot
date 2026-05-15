@@ -16,12 +16,16 @@ services:
       - SPOTIFY_CLIENT_ID
       - SPOTIFY_CLIENT_SECRET
       - IS_OWNER_INACTIVE
-      - REDIS_HOST
-      - REDIS_PORT
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
       - REDIS_PASSWORD
       - REDIS_DB
       - CACHE_TTL_STREAM
       - CACHE_TTL_META
+
+    networks:
+      - default
+      - redis-net
 
     restart: unless-stopped
 
@@ -32,3 +36,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  redis-net:
+    external: true
+    name: redis_default
