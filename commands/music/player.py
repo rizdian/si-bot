@@ -62,6 +62,23 @@ class MusicControllerView(discord.ui.View):
     def __init__(self, player: "MusicPlayer"):
         super().__init__(timeout=None)
         self.player = player
+        self._sync_buttons()
+
+    def _sync_buttons(self):
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                if "Loop" in (item.label or ""):
+                    idx = {"off": 0, "track": 1, "queue": 2}.get(self.player.loop_mode, 0)
+                    item.label = _LOOP_LABELS[idx]
+                    item.emoji = _LOOP_EMOJIS[idx]
+                    item.style = _LOOP_COLORS[idx]
+                elif "Autoplay" in (item.label or ""):
+                    if self.player.autoplay:
+                        item.label = "Autoplay: On"
+                        item.style = discord.ButtonStyle.success
+                    else:
+                        item.label = "Autoplay: Off"
+                        item.style = discord.ButtonStyle.secondary
 
     @discord.ui.button(label="Pause", emoji="⏸️", style=discord.ButtonStyle.secondary)
     async def pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
