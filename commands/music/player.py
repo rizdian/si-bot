@@ -7,6 +7,7 @@ import discord
 from .source import YTDLSource, get_related_video_url
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
+from utils.redis_cache import invalidate
 
 logger = logging.getLogger("bot")
 
@@ -214,7 +215,10 @@ class MusicPlayer:
         logger.error("Player error: %s", error)
         err_str = str(error)
         if "403" in err_str or "Forbidden" in err_str:
-            msg = "**Gagal memutar lagu** (403 Forbidden).\nSilahkan ulang pake `/play judul artis` ya."
+            if self.current:
+                query = self.current.webpage_url or self.current.title
+                await invalidate(query)
+            msg = "**Gagal memutar lagu** (403 Forbidden).\nCache diinvalidate, coba ulang pake `/play judul artis` ya."
         else:
             msg = f"**Error:** {err_str}\nSilahkan ulang pake `/play judul artis` ya."
 

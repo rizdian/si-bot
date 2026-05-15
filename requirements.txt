@@ -4,3 +4,4 @@ yt-dlp
 aiohttp
 python-dotenv
 spotipy
+redis[hiredis]

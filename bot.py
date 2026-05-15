@@ -14,6 +14,7 @@ from commands.afk import register_afk_commands
 from events.member import register_member_events
 from events.message import register_message_events
 from utils.logger_setup import setup_logger
+from utils.redis_cache import init_redis, close_redis
 
 
 setup_logger()
@@ -36,6 +37,7 @@ class MyClient(discord.Client):
 
     async def setup_hook(self) -> None:
         self.ai_session = aiohttp.ClientSession()
+        await init_redis()
         register_general_commands(self.tree, self)
         register_ai_commands(self.tree, self)
         register_music_commands(self.tree, self)
@@ -47,6 +49,7 @@ class MyClient(discord.Client):
         logger.info("✅ Synced guild commands: %s", [cmd.name for cmd in synced])
 
     async def close(self) -> None:
+        await close_redis()
         if self.ai_session:
             await self.ai_session.close()
             logger.info("🛑 Langit ClientSession closed.")

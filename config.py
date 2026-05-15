@@ -52,6 +52,13 @@ OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
 SPOTIFY_CLIENT_ID = get_env_str("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = get_env_str("SPOTIFY_CLIENT_SECRET")
 
+REDIS_HOST = get_env_str("REDIS_HOST", "localhost")
+REDIS_PORT = get_env_int("REDIS_PORT", 6379)
+REDIS_PASSWORD = get_env_str("REDIS_PASSWORD")
+REDIS_DB = get_env_int("REDIS_DB", 0) or 0
+CACHE_TTL_STREAM = get_env_int("CACHE_TTL_STREAM", 3600)
+CACHE_TTL_META = get_env_int("CACHE_TTL_META", 86400)
+
 
 DEFAULT_AI_PERSONALITY = """
 lu adalah "Tukang Ikut Campur", penghuni discord yang suka bantu member.

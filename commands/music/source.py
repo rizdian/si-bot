@@ -5,6 +5,8 @@ from typing import Optional
 import discord
 import yt_dlp
 
+from utils.redis_cache import get_cached, set_cached, set_meta
+
 logger = logging.getLogger("bot")
 
 _USER_AGENT = (
@@ -137,15 +139,37 @@ class YTDLSource(discord.PCMVolumeTransformer):
     async def from_url(cls, url: str, *, loop=None, stream: bool = False):
         loop = loop or asyncio.get_event_loop()
 
-        try:
-            data = await loop.run_in_executor(
-                None, lambda: ytdl.extract_info(url, download=not stream),
-            )
-        except Exception as e:
-            raise _translate_ytdl_error(e) from e
+        cached = await get_cached(url)
+        if cached:
+            logger.info("Cache hit for: %s", url)
+            data = cached
+        else:
+            try:
+                data = await loop.run_in_executor(
+                    None, lambda: ytdl.extract_info(url, download=not stream),
+                )
+            except Exception as e:
+                raise _translate_ytdl_error(e) from e
+
+            if not data:
+                raise Exception("Data lagu kosong. YouTube/yt-dlp tidak memberikan hasil.")
+
+            if "entries" in data:
+                entries = [e for e in data["entries"] if e]
+                if not entries:
+                    raise Exception("Playlist/search result kosong.")
+                if data.get("_type") == "playlist":
+                    await set_cached(url, data)
+                    return data
+                data = entries[0]
+
+            await set_cached(url, data)
+            video_id = data.get("id")
+            if video_id:
+                await set_meta(video_id, data)
 
         if not data:
-            raise Exception("Data lagu kosong. YouTube/yt-dlp tidak memberikan hasil.")
+            raise Exception("Data lagu kosong.")
 
         if "entries" in data:
             entries = [e for e in data["entries"] if e]

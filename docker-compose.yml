@@ -16,6 +16,12 @@ services:
       - SPOTIFY_CLIENT_ID
       - SPOTIFY_CLIENT_SECRET
       - IS_OWNER_INACTIVE
+      - REDIS_HOST
+      - REDIS_PORT
+      - REDIS_PASSWORD
+      - REDIS_DB
+      - CACHE_TTL_STREAM
+      - CACHE_TTL_META
 
     restart: unless-stopped
 
