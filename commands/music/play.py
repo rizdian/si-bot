@@ -41,17 +41,27 @@ async def _enqueue_entries(
     requester: discord.Member,
     channel: discord.TextChannel,
     playlist_title: str,
-) -> None:
-    await channel.send(
-        embed=info_embed(f"Menambahkan **{len(entries)}** lagu dari playlist: **{playlist_title}**")
-    )
+    silent: bool = False,
+) -> tuple[int, int]:
+    added = 0
+    failed = 0
     for entry in entries:
         try:
             source = await YTDLSource.create_source(entry, stream=True)
             source.requester = requester
             await player.queue.put(source)
+            added += 1
         except Exception as e:
+            failed += 1
             logger.error("Error processing playlist entry: %s", e)
+
+    if not silent:
+        parts = [f"✅ **{added}** lagu ditambahkan ke antrean dari: **{playlist_title}**"]
+        if failed:
+            parts.append(f"⚠️ {failed} lagu gagal ditambahkan.")
+        await channel.send(embed=info_embed("\n".join(parts)))
+
+    return added, failed
 
 
 async def do_play(
@@ -81,40 +91,67 @@ async def do_play(
     player = get_player(fake)
     player.vc = guild.voice_client
 
-    for i, query in enumerate(queries):
-        try:
-            if i == 0:
-                await send(embed=info_embed(f"🔎 Mencari: **{query}**..."))
+    is_batch = len(queries) > 1
 
-            result = await YTDLSource.from_url(
-                query, loop=asyncio.get_running_loop(), stream=True,
-            )
-
-            if isinstance(result, dict) and "entries" in result:
-                entries = [e for e in result["entries"] if e]
-                if entries:
-                    await _enqueue_entries(
-                        entries, player, requester, channel,
-                        result.get("title", "YouTube Playlist"),
-                    )
-                continue
-
-            result.requester = requester
-            await player.queue.put(result)
-
-            if i == 0:
-                msg = (
-                    f"Ditambahkan ke antrean: **{result.title}**"
-                    if player.current
-                    else f"Ditemukan! Siap diputar: **{result.title}**"
+    if is_batch:
+        await send(embed=info_embed(f"🔎 Memproses **{len(queries)}** lagu..."))
+        added = 0
+        failed = 0
+        for query in queries:
+            try:
+                result = await YTDLSource.from_url(
+                    query, loop=asyncio.get_running_loop(), stream=True,
                 )
-                await send(embed=success_embed(f"✅ {msg}"))
+                if isinstance(result, dict) and "entries" in result:
+                    entries = [e for e in result["entries"] if e]
+                    if entries:
+                        a, _ = await _enqueue_entries(
+                            entries, player, requester, channel,
+                            result.get("title", "YouTube Playlist"),
+                            silent=True,
+                        )
+                        added += a
+                else:
+                    result.requester = requester
+                    await player.queue.put(result)
+                    added += 1
+            except Exception as e:
+                failed += 1
+                logger.error("Error processing query '%s': %s", query, e)
 
-        except Exception as e:
-            logger.error("Error processing query '%s': %s", query, e)
-            if i == 0:
-                await send(embed=error_embed(f"Gagal memutar **{query}**: {e}"))
-            else:
-                await channel.send(
-                    embed=error_embed(f"Gagal menambahkan **{query}** ke antrean.")
+        parts = [f"✅ **{added}** lagu ditambahkan ke antrean"]
+        if failed:
+            parts.append(f"⚠️ {failed} lagu gagal ditambahkan.")
+        await send(embed=success_embed("\n".join(parts)))
+        return
+
+    query = queries[0]
+    try:
+        await send(embed=info_embed(f"🔎 Mencari: **{query}**..."))
+
+        result = await YTDLSource.from_url(
+            query, loop=asyncio.get_running_loop(), stream=True,
+        )
+
+        if isinstance(result, dict) and "entries" in result:
+            entries = [e for e in result["entries"] if e]
+            if entries:
+                await _enqueue_entries(
+                    entries, player, requester, channel,
+                    result.get("title", "YouTube Playlist"),
                 )
+            return
+
+        result.requester = requester
+        await player.queue.put(result)
+
+        msg = (
+            f"Ditambahkan ke antrean: **{result.title}**"
+            if player.current
+            else f"Ditemukan! Siap diputar: **{result.title}**"
+        )
+        await send(embed=success_embed(f"✅ {msg}"))
+
+    except Exception as e:
+        logger.error("Error processing query '%s': %s", query, e)
+        await send(embed=error_embed(f"Gagal memutar **{query}**: {e}"))

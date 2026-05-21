@@ -4,6 +4,7 @@ from typing import Optional
 
 import discord
 
+from config import OWNER_USER_ID
 from .source import YTDLSource, get_related_video_url
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
@@ -115,6 +116,11 @@ class MusicControllerView(discord.ui.View):
 
     @discord.ui.button(label="Stop", emoji="⏹️", style=discord.ButtonStyle.danger)
     async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != OWNER_USER_ID:
+            return await interaction.response.send_message(
+                embed=error_embed("❌ Kamu bukan owner."), ephemeral=True
+            )
+
         vc = interaction.guild.voice_client
         if vc:
             vc.stop()

@@ -4,7 +4,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 
-from config import GUILD_ID
+from config import GUILD_ID, OWNER_USER_ID
 
 from .source import YTDLSource
 from .player import MusicPlayer, players
@@ -102,6 +102,11 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
         guild=TEST_GUILD,
     )
     async def stop(interaction: discord.Interaction):
+        if interaction.user.id != OWNER_USER_ID:
+            return await interaction.response.send_message(
+                embed=error_embed("❌ Kamu bukan owner."), ephemeral=True
+            )
+
         vc = interaction.guild.voice_client
         if not vc:
             return await interaction.response.send_message(
