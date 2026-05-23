@@ -346,16 +346,16 @@ class MusicPlayer:
         exclude_titles = self._get_exclude_titles()
         exclude_ids = self._get_exclude_video_ids(source)
 
+        query = spotify_fallback_artist_track(title, exclude=exclude_titles)
+        if query:
+            return query, "Spotify Related Artist"
+
         ai_session = self.interaction.client.ai_session
         query = await ai_recommend_music(
             title, exclude=exclude_titles, session=ai_session,
         )
         if query:
             return query, "AI Recommend"
-
-        query = spotify_fallback_artist_track(title, exclude=exclude_titles)
-        if query:
-            return query, "Spotify Related Artist"
 
         related_url = await get_related_video_url(
             source.data, exclude_ids=exclude_ids,

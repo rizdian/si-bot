@@ -179,6 +179,8 @@ async def ai_recommend_music(
             "role": "system",
             "content": (
                 "You are a music recommendation engine. "
+                "IMPORTANT: only recommend real existing MUSIC songs by the original artist. "
+                "Never suggest podcasts, audiobooks, sound effects. "
                 "Always respond with exactly 5 lines. "
                 "Each line must be: Song Title - Artist Name. "
                 "No other text."
