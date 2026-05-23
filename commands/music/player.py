@@ -297,7 +297,7 @@ class MusicPlayer:
         self._played_sources: list[YTDLSource] = []
         self._autoplay_history: deque[str] = deque(maxlen=50)
         self._prefetch_task: Optional[asyncio.Task] = None
-        self._prefetched_source: Optional[YTDLSource] = None
+        self._prefetched_query: Optional[tuple[str, str]] = None
         self._playback_error: Optional[str] = None
 
         interaction.client.loop.create_task(self.player_loop())
@@ -447,7 +447,7 @@ class MusicPlayer:
         if self._prefetch_task and not self._prefetch_task.done():
             self._prefetch_task.cancel()
         self._prefetch_task = None
-        self._prefetched_source = None
+        self._prefetched_query = None
 
     def _start_prefetch(self, source: YTDLSource):
         self._cancel_prefetch()
@@ -459,13 +459,8 @@ class MusicPlayer:
                 query, label = await self._resolve_autoplay_query(source)
                 if not self.vc or not self.vc.is_connected():
                     return
-                fetched = await self._fetch_source_from_query(query)
-                if not self.vc or not self.vc.is_connected():
-                    return
-                if fetched:
-                    fetched.requester = self.interaction.guild.me
-                    self._prefetched_source = fetched
-                    logger.info("Prefetch [%s]: '%s'", label, fetched.title)
+                self._prefetched_query = (query, label)
+                logger.info("Prefetch [%s]: query '%s'", label, query)
             except asyncio.CancelledError:
                 pass
             except Exception as e:
@@ -522,17 +517,23 @@ class MusicPlayer:
             return False
 
     async def _autoplay_related(self):
-        if self._prefetched_source:
-            source = self._prefetched_source
-            self._prefetched_source = None
+        if self._prefetched_query:
+            query, label = self._prefetched_query
+            self._prefetched_query = None
             self._prefetch_task = None
-            source._from_autoplay = True
-            await self.queue.put(source)
-            self._record_played(source.title)
-            logger.info("Autoplay [Prefetch]: enqueued '%s'", source.title)
-            target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
-            await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
-            return
+            try:
+                source = await self._fetch_source_from_query(query)
+                if source:
+                    source.requester = self.interaction.guild.me
+                    source._from_autoplay = True
+                    await self.queue.put(source)
+                    self._record_played(source.title)
+                    logger.info("Autoplay [Prefetch %s]: enqueued '%s'", label, source.title)
+                    target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
+                    await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
+                    return
+            except Exception as e:
+                logger.warning("Autoplay prefetch fetch failed: %s", e)
 
         if self._prefetch_task and not self._prefetch_task.done():
             try:
@@ -540,17 +541,23 @@ class MusicPlayer:
             except (asyncio.TimeoutError, Exception):
                 pass
 
-            if self._prefetched_source:
-                source = self._prefetched_source
-                self._prefetched_source = None
+            if self._prefetched_query:
+                query, label = self._prefetched_query
+                self._prefetched_query = None
                 self._prefetch_task = None
-                source._from_autoplay = True
-                await self.queue.put(source)
-                self._record_played(source.title)
-                logger.info("Autoplay [Prefetch late]: enqueued '%s'", source.title)
-                target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
-                await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
-                return
+                try:
+                    source = await self._fetch_source_from_query(query)
+                    if source:
+                        source.requester = self.interaction.guild.me
+                        source._from_autoplay = True
+                        await self.queue.put(source)
+                        self._record_played(source.title)
+                        logger.info("Autoplay [Prefetch late %s]: enqueued '%s'", label, source.title)
+                        target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
+                        await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
+                        return
+                except Exception as e:
+                    logger.warning("Autoplay prefetch late fetch failed: %s", e)
 
         last_source = self._last_source
         if not last_source:
