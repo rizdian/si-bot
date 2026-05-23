@@ -5,7 +5,7 @@ import discord
 
 from .source import YTDLSource
 from .player import MusicPlayer, get_player, players
-from .spotify import spotify_to_queries
+from .spotify import spotify_to_queries, spotify_search_track
 from .embeds import error_embed, success_embed, info_embed
 
 logger = logging.getLogger("bot")
@@ -86,6 +86,10 @@ async def do_play(
             return await send(embed=error_embed(f"{e}"))
         if info_message:
             await send(embed=info_embed(info_message))
+    elif not search.startswith(("http://", "https://")):
+        spotify_query = spotify_search_track(search)
+        if spotify_query:
+            queries = [spotify_query]
 
     fake = FakeInteraction(guild, requester, channel, client)
     player = get_player(fake)

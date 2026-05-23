@@ -70,3 +70,26 @@ def spotify_to_queries(url: str) -> tuple[list[str], Optional[str]]:
         raise Exception(f"Gagal mengambil data dari Spotify: {e}") from e
 
     return queries, info
+
+
+def spotify_search_track(query: str) -> Optional[str]:
+    if not sp:
+        return None
+
+    try:
+        results = sp.search(q=query, type="track", limit=1)
+        tracks = results.get("tracks", {}).get("items", [])
+        if not tracks:
+            return None
+
+        track = tracks[0]
+        artist_name = track["artists"][0]["name"]
+        track_name = track["name"]
+        refined_query = f"{track_name} {artist_name}"
+        logger.info(
+            "Spotify search hit for '%s' -> '%s'", query, refined_query,
+        )
+        return refined_query
+    except Exception as e:
+        logger.warning("Spotify search failed for '%s': %s", query, e)
+        return None

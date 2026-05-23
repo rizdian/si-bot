@@ -6,6 +6,7 @@ import discord
 
 from config import OWNER_USER_ID
 from .source import YTDLSource, get_related_video_url
+from .spotify import spotify_search_track
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
 from utils.redis_cache import invalidate
@@ -313,27 +314,39 @@ class MusicPlayer:
         if not last_source:
             return
 
+        query = None
+        source_label = ""
+
         related_url = await get_related_video_url(last_source.data)
-        if not related_url:
-            logger.warning("Autoplay: no related videos found for '%s'", last_source.title)
-            return
+        if related_url:
+            query = related_url
+            source_label = "YouTube Related"
+        else:
+            last_title = last_source.title or ""
+            spotify_query = spotify_search_track(last_title)
+            if spotify_query:
+                query = spotify_query
+                source_label = "Spotify → YouTube"
+            else:
+                query = f"ytsearch1:{last_title}"
+                source_label = "YouTube Search"
 
         try:
             source = await YTDLSource.from_url(
-                related_url,
+                query,
                 loop=self.interaction.client.loop,
                 stream=True,
             )
             source.requester = self.interaction.guild.me
             await self.queue.put(source)
-            logger.info("Autoplay: enqueued '%s'", source.title)
+            logger.info("Autoplay [%s]: enqueued '%s'", source_label, source.title)
 
             target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
             await target.send(
                 embed=info_embed(f"🔀 **Autoplay:** {source.title}")
             )
         except Exception as e:
-            logger.error("Autoplay error for '%s': %s", related_url, e)
+            logger.error("Autoplay error for '%s': %s", query, e)
 
     async def _send_now_playing(self, source: YTDLSource):
         requester = source.requester or self.interaction.user
