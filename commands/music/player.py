@@ -185,6 +185,7 @@ class MusicControllerView(discord.ui.View):
             button.label = "Autoplay: Off"
             button.emoji = "🔀"
             button.style = discord.ButtonStyle.secondary
+            player._cancel_prefetch()
 
         await interaction.response.edit_message(view=self)
 
@@ -234,6 +235,8 @@ class MusicPlayer:
         self._last_source: Optional[YTDLSource] = None
         self._played_sources: list[YTDLSource] = []
         self._autoplay_history: deque[str] = deque(maxlen=50)
+        self._prefetch_task: Optional[asyncio.Task] = None
+        self._prefetched_source: Optional[YTDLSource] = None
 
         interaction.client.loop.create_task(self.player_loop())
 
@@ -279,6 +282,9 @@ class MusicPlayer:
                 self.current = None
                 continue
 
+            if self.autoplay and self.queue.empty() and not self.loop_mode == self.LOOP_TRACK:
+                self._start_prefetch(source)
+
             self.vc.play(
                 source,
                 after=lambda e: self.interaction.client.loop.call_soon_threadsafe(
@@ -320,10 +326,10 @@ class MusicPlayer:
     def _get_exclude_titles(self) -> set[str]:
         return set(self._autoplay_history)
 
-    def _get_exclude_video_ids(self) -> set[str]:
+    def _get_exclude_video_ids(self, source: YTDLSource) -> set[str]:
         ids = set()
-        if self._last_source and self._last_source.data:
-            ids.add(self._last_source.data.get("id", ""))
+        if source.data:
+            ids.add(source.data.get("id", ""))
         for src in self._played_sources:
             if src.data:
                 vid = src.data.get("id")
@@ -331,57 +337,109 @@ class MusicPlayer:
                     ids.add(vid)
         return ids
 
+    async def _resolve_autoplay_query(self, source: YTDLSource) -> tuple[str, str]:
+        title = source.title or ""
+        exclude_titles = self._get_exclude_titles()
+        exclude_ids = self._get_exclude_video_ids(source)
+
+        query = spotify_recommend(title, exclude=exclude_titles)
+        if query:
+            return query, "Spotify Recommend"
+
+        ai_session = self.interaction.client.ai_session
+        query = await ai_recommend_music(
+            title, exclude=exclude_titles, session=ai_session,
+        )
+        if query:
+            return query, "AI Recommend"
+
+        query = spotify_fallback_artist_track(title, exclude=exclude_titles)
+        if query:
+            return query, "Spotify Related Artist"
+
+        related_url = await get_related_video_url(
+            source.data, exclude_ids=exclude_ids,
+        )
+        if related_url:
+            return related_url, "YouTube Related"
+
+        return f"ytsearch1:{title}", "YouTube Search"
+
+    async def _fetch_source_from_query(self, query: str) -> Optional[YTDLSource]:
+        result = await YTDLSource.from_url(
+            query, loop=self.interaction.client.loop, stream=True,
+        )
+
+        if isinstance(result, dict) and "entries" in result:
+            entries = [e for e in result["entries"] if e]
+            if not entries:
+                return None
+            return await YTDLSource.create_source(entries[0], stream=True)
+
+        return result
+
+    def _cancel_prefetch(self):
+        if self._prefetch_task and not self._prefetch_task.done():
+            self._prefetch_task.cancel()
+        self._prefetch_task = None
+        self._prefetched_source = None
+
+    def _start_prefetch(self, source: YTDLSource):
+        self._cancel_prefetch()
+
+        async def _do_prefetch():
+            try:
+                query, label = await self._resolve_autoplay_query(source)
+                fetched = await self._fetch_source_from_query(query)
+                if fetched:
+                    fetched.requester = self.interaction.guild.me
+                    self._prefetched_source = fetched
+                    logger.info("Prefetch [%s]: '%s'", label, fetched.title)
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning("Prefetch failed: %s", e)
+
+        self._prefetch_task = self.interaction.client.loop.create_task(_do_prefetch())
+
     async def _autoplay_related(self):
+        if self._prefetched_source:
+            source = self._prefetched_source
+            self._prefetched_source = None
+            self._prefetch_task = None
+            await self.queue.put(source)
+            self._record_played(source.title)
+            logger.info("Autoplay [Prefetch]: enqueued '%s'", source.title)
+            target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
+            await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
+            return
+
+        if self._prefetch_task and not self._prefetch_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(self._prefetch_task), timeout=15)
+            except (asyncio.TimeoutError, Exception):
+                pass
+
+            if self._prefetched_source:
+                source = self._prefetched_source
+                self._prefetched_source = None
+                self._prefetch_task = None
+                await self.queue.put(source)
+                self._record_played(source.title)
+                logger.info("Autoplay [Prefetch late]: enqueued '%s'", source.title)
+                target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
+                await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
+                return
+
         last_source = self._last_source
         if not last_source:
             return
 
-        last_title = last_source.title or ""
-        exclude_titles = self._get_exclude_titles()
-        exclude_ids = self._get_exclude_video_ids()
-
-        query = None
-        source_label = ""
-
-        query = spotify_recommend(last_title, exclude=exclude_titles)
-        if query:
-            source_label = "Spotify Recommend"
-        else:
-            ai_session = self.interaction.client.ai_session
-            query = await ai_recommend_music(
-                last_title, exclude=exclude_titles, session=ai_session,
-            )
-            if query:
-                source_label = "AI Recommend"
-            else:
-                query = spotify_fallback_artist_track(last_title, exclude=exclude_titles)
-                if query:
-                    source_label = "Spotify Related Artist"
-                else:
-                    related_url = await get_related_video_url(
-                        last_source.data, exclude_ids=exclude_ids,
-                    )
-                    if related_url:
-                        query = related_url
-                        source_label = "YouTube Related"
-                    else:
-                        query = f"ytsearch1:{last_title}"
-                        source_label = "YouTube Search"
-
         try:
-            result = await YTDLSource.from_url(
-                query,
-                loop=self.interaction.client.loop,
-                stream=True,
-            )
-
-            if isinstance(result, dict) and "entries" in result:
-                entries = [e for e in result["entries"] if e]
-                if not entries:
-                    return
-                source = await YTDLSource.create_source(entries[0], stream=True)
-            else:
-                source = result
+            query, source_label = await self._resolve_autoplay_query(last_source)
+            source = await self._fetch_source_from_query(query)
+            if not source:
+                return
 
             source.requester = self.interaction.guild.me
             await self.queue.put(source)
@@ -389,11 +447,9 @@ class MusicPlayer:
             logger.info("Autoplay [%s]: enqueued '%s'", source_label, source.title)
 
             target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel
-            await target.send(
-                embed=info_embed(f"🔀 **Autoplay:** {source.title}")
-            )
+            await target.send(embed=info_embed(f"🔀 **Autoplay:** {source.title}"))
         except Exception as e:
-            logger.error("Autoplay error for '%s': %s", query, e)
+            logger.error("Autoplay error: %s", e)
 
     async def _send_now_playing(self, source: YTDLSource):
         requester = source.requester or self.interaction.user
