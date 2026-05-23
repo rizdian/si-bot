@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from typing import Optional
 
 import discord
@@ -182,12 +183,23 @@ class YTDLSource(discord.PCMVolumeTransformer):
         return await cls.create_source(data, stream=stream)
 
 
-async def get_related_video_url(data: dict, loop=None) -> str | None:
+async def get_related_video_url(
+    data: dict,
+    loop=None,
+    exclude_ids: set[str] | None = None,
+) -> str | None:
     related = data.get("related_videos")
     if not related:
         return None
-    for video in related:
+
+    exclude = exclude_ids or set()
+    candidates = []
+    for video in related[:15]:
         video_id = video.get("id")
-        if video_id:
-            return f"https://www.youtube.com/watch?v={video_id}"
-    return None
+        if video_id and video_id not in exclude:
+            candidates.append(f"https://www.youtube.com/watch?v={video_id}")
+
+    if not candidates:
+        return None
+
+    return random.choice(candidates)

@@ -1,12 +1,13 @@
 import asyncio
 import logging
+from collections import deque
 from typing import Optional
 
 import discord
 
 from config import OWNER_USER_ID
 from .source import YTDLSource, get_related_video_url
-from .spotify import spotify_search_track
+from .spotify import spotify_recommend, spotify_fallback_artist_track
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
 from utils.redis_cache import invalidate
@@ -232,6 +233,7 @@ class MusicPlayer:
         self.autoplay: bool = False
         self._last_source: Optional[YTDLSource] = None
         self._played_sources: list[YTDLSource] = []
+        self._autoplay_history: deque[str] = deque(maxlen=50)
 
         interaction.client.loop.create_task(self.player_loop())
 
@@ -309,27 +311,55 @@ class MusicPlayer:
                 logger.error("Loop queue re-fetch error for '%s': %s", src.title, e)
         self._played_sources.clear()
 
+    def _is_recently_played(self, title: str) -> bool:
+        return title.strip().lower() in self._autoplay_history
+
+    def _record_played(self, title: str):
+        self._autoplay_history.append(title.strip().lower())
+
+    def _get_exclude_titles(self) -> set[str]:
+        return set(self._autoplay_history)
+
+    def _get_exclude_video_ids(self) -> set[str]:
+        ids = set()
+        if self._last_source and self._last_source.data:
+            ids.add(self._last_source.data.get("id", ""))
+        for src in self._played_sources:
+            if src.data:
+                vid = src.data.get("id")
+                if vid:
+                    ids.add(vid)
+        return ids
+
     async def _autoplay_related(self):
         last_source = self._last_source
         if not last_source:
             return
 
+        last_title = last_source.title or ""
+        exclude_titles = self._get_exclude_titles()
+        exclude_ids = self._get_exclude_video_ids()
+
         query = None
         source_label = ""
 
-        related_url = await get_related_video_url(last_source.data)
-        if related_url:
-            query = related_url
-            source_label = "YouTube Related"
+        query = spotify_recommend(last_title, exclude=exclude_titles)
+        if query:
+            source_label = "Spotify Recommend"
         else:
-            last_title = last_source.title or ""
-            spotify_query = spotify_search_track(last_title)
-            if spotify_query:
-                query = spotify_query
-                source_label = "Spotify → YouTube"
+            query = spotify_fallback_artist_track(last_title, exclude=exclude_titles)
+            if query:
+                source_label = "Spotify Related Artist"
             else:
-                query = f"ytsearch1:{last_title}"
-                source_label = "YouTube Search"
+                related_url = await get_related_video_url(
+                    last_source.data, exclude_ids=exclude_ids,
+                )
+                if related_url:
+                    query = related_url
+                    source_label = "YouTube Related"
+                else:
+                    query = f"ytsearch1:{last_title}"
+                    source_label = "YouTube Search"
 
         try:
             source = await YTDLSource.from_url(
@@ -339,6 +369,7 @@ class MusicPlayer:
             )
             source.requester = self.interaction.guild.me
             await self.queue.put(source)
+            self._record_played(source.title)
             logger.info("Autoplay [%s]: enqueued '%s'", source_label, source.title)
 
             target = self.now_playing_message.channel if self.now_playing_message else self.interaction.channel

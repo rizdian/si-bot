@@ -1,4 +1,5 @@
 import logging
+import random
 from typing import Optional
 
 from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
@@ -92,4 +93,94 @@ def spotify_search_track(query: str) -> Optional[str]:
         return refined_query
     except Exception as e:
         logger.warning("Spotify search failed for '%s': %s", query, e)
+        return None
+
+
+def spotify_recommend(title: str, exclude: set[str] | None = None) -> Optional[str]:
+    if not sp:
+        return None
+
+    exclude = exclude or set()
+
+    try:
+        results = sp.search(q=title, type="track", limit=1)
+        tracks = results.get("tracks", {}).get("items", [])
+        if not tracks:
+            return None
+
+        track = tracks[0]
+        track_id = track["id"]
+        artist_id = track["artists"][0]["id"]
+
+        seed_genres = []
+        try:
+            artist_data = sp.artist(artist_id)
+            genres = artist_data.get("genres", [])
+            seed_genres = genres[:2]
+        except Exception:
+            pass
+
+        seeds = {"seed_tracks": [track_id], "limit": 8}
+        if artist_id:
+            seeds["seed_artists"] = [artist_id]
+        if seed_genres:
+            seeds["seed_genres"] = seed_genres[:2]
+
+        recs = sp.recommendations(**seeds)
+        rec_tracks = recs.get("tracks", [])
+
+        candidates = []
+        for t in rec_tracks:
+            artist_name = t["artists"][0]["name"]
+            track_name = t["name"]
+            key = f"{track_name.lower()} {artist_name.lower()}"
+            if key not in exclude:
+                candidates.append(f"{track_name} {artist_name}")
+
+        if candidates:
+            chosen = random.choice(candidates)
+            logger.info("Spotify recommend for '%s' -> '%s'", title, chosen)
+            return chosen
+
+        return None
+    except Exception as e:
+        logger.warning("Spotify recommend failed for '%s': %s", title, e)
+        return None
+
+
+def spotify_fallback_artist_track(title: str, exclude: set[str] | None = None) -> Optional[str]:
+    if not sp:
+        return None
+
+    exclude = exclude or set()
+
+    try:
+        results = sp.search(q=title, type="track", limit=1)
+        tracks = results.get("tracks", {}).get("items", [])
+        if not tracks:
+            return None
+
+        artist_id = tracks[0]["artists"][0]["id"]
+
+        related_artists = sp.artist_related_artists(artist_id).get("artists", [])
+        if not related_artists:
+            return None
+
+        random.shuffle(related_artists)
+
+        for related in related_artists[:3]:
+            top_tracks = sp.artist_top_tracks(related["id"]).get("tracks", [])
+            random.shuffle(top_tracks)
+            for t in top_tracks:
+                artist_name = t["artists"][0]["name"]
+                track_name = t["name"]
+                key = f"{track_name.lower()} {artist_name.lower()}"
+                if key not in exclude:
+                    query = f"{track_name} {artist_name}"
+                    logger.info("Spotify related artist for '%s' -> '%s'", title, query)
+                    return query
+
+        return None
+    except Exception as e:
+        logger.warning("Spotify fallback artist failed for '%s': %s", title, e)
         return None
