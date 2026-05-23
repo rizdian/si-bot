@@ -7,7 +7,7 @@ import discord
 
 from config import OWNER_USER_ID
 from .source import YTDLSource, get_related_video_url
-from .spotify import spotify_fallback_artist_track, ai_recommend_music
+from .spotify import ai_recommend_music
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
 from utils.redis_cache import invalidate
@@ -240,6 +240,7 @@ class MusicPlayer:
         self._autoplay_history: deque[str] = deque(maxlen=50)
         self._prefetch_task: Optional[asyncio.Task] = None
         self._prefetched_source: Optional[YTDLSource] = None
+        self._playback_error: Optional[str] = None
 
         interaction.client.loop.create_task(self.player_loop())
 
@@ -262,7 +263,10 @@ class MusicPlayer:
 
     def _handle_next(self, error):
         if error:
+            self._playback_error = str(error)
             self.interaction.client.loop.create_task(self._send_error(error))
+        else:
+            self._playback_error = None
         self.next.set()
 
     async def player_loop(self):
@@ -299,7 +303,14 @@ class MusicPlayer:
             await self._send_now_playing(source)
 
             await self.next.wait()
+
+            playback_err = self._playback_error
             source.cleanup()
+
+            if playback_err and getattr(source, "_from_autoplay", False):
+                retry_ok = await self._retry_play(source)
+                if retry_ok:
+                    continue
 
             await self._handle_loop_after_play(source)
             self._last_source = source
@@ -345,10 +356,6 @@ class MusicPlayer:
         title = source.title or ""
         exclude_titles = self._get_exclude_titles()
         exclude_ids = self._get_exclude_video_ids(source)
-
-        query = spotify_fallback_artist_track(title, exclude=exclude_titles)
-        if query:
-            return query, "Spotify Related Artist"
 
         ai_session = self.interaction.client.ai_session
         query = await ai_recommend_music(
@@ -408,11 +415,60 @@ class MusicPlayer:
 
         self._prefetch_task = self.interaction.client.loop.create_task(_do_prefetch())
 
+    async def _retry_play(self, source: YTDLSource) -> bool:
+        if not self.vc or not self.vc.is_connected():
+            return False
+
+        query = source.webpage_url or source.title
+        if not query:
+            return False
+
+        try:
+            await invalidate(query)
+            logger.info("Retry: re-fetching '%s'", source.title)
+
+            new_source = await YTDLSource.from_url(
+                query, loop=self.interaction.client.loop, stream=True,
+            )
+
+            if isinstance(new_source, dict) and "entries" in new_source:
+                entries = [e for e in new_source["entries"] if e]
+                if not entries:
+                    return False
+                new_source = await YTDLSource.create_source(entries[0], stream=True)
+
+            new_source.requester = source.requester
+            new_source._from_autoplay = True
+
+            self.current = new_source
+            self.next.clear()
+
+            self.vc.play(
+                new_source,
+                after=lambda e: self.interaction.client.loop.call_soon_threadsafe(
+                    self._handle_next, e,
+                ),
+            )
+
+            await self.next.wait()
+            new_source.cleanup()
+
+            if self._playback_error:
+                logger.error("Retry also failed for '%s'", source.title)
+                return False
+
+            logger.info("Retry success for '%s'", source.title)
+            return True
+        except Exception as e:
+            logger.error("Retry exception for '%s': %s", source.title, e)
+            return False
+
     async def _autoplay_related(self):
         if self._prefetched_source:
             source = self._prefetched_source
             self._prefetched_source = None
             self._prefetch_task = None
+            source._from_autoplay = True
             await self.queue.put(source)
             self._record_played(source.title)
             logger.info("Autoplay [Prefetch]: enqueued '%s'", source.title)
@@ -430,6 +486,7 @@ class MusicPlayer:
                 source = self._prefetched_source
                 self._prefetched_source = None
                 self._prefetch_task = None
+                source._from_autoplay = True
                 await self.queue.put(source)
                 self._record_played(source.title)
                 logger.info("Autoplay [Prefetch late]: enqueued '%s'", source.title)
@@ -448,6 +505,7 @@ class MusicPlayer:
                 return
 
             source.requester = self.interaction.guild.me
+            source._from_autoplay = True
             await self.queue.put(source)
             self._record_played(source.title)
             logger.info("Autoplay [%s]: enqueued '%s'", source_label, source.title)

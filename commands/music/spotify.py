@@ -99,44 +99,6 @@ def spotify_search_track(query: str) -> Optional[str]:
         return None
 
 
-def spotify_fallback_artist_track(title: str, exclude: set[str] | None = None) -> Optional[str]:
-    if not sp:
-        return None
-
-    exclude = exclude or set()
-
-    try:
-        results = sp.search(q=title, type="track", limit=1)
-        tracks = results.get("tracks", {}).get("items", [])
-        if not tracks:
-            return None
-
-        artist_id = tracks[0]["artists"][0]["id"]
-
-        related_artists = sp.artist_related_artists(artist_id).get("artists", [])
-        if not related_artists:
-            return None
-
-        random.shuffle(related_artists)
-
-        for related in related_artists[:3]:
-            top_tracks = sp.artist_top_tracks(related["id"]).get("tracks", [])
-            random.shuffle(top_tracks)
-            for t in top_tracks:
-                artist_name = t["artists"][0]["name"]
-                track_name = t["name"]
-                key = f"{track_name.lower()} {artist_name.lower()}"
-                if key not in exclude:
-                    query = f"{track_name} {artist_name}"
-                    logger.info("Spotify related artist for '%s' -> '%s'", title, query)
-                    return query
-
-        return None
-    except Exception as e:
-        logger.warning("Spotify fallback artist failed for '%s': %s", title, e)
-        return None
-
-
 def _parse_title_artist(title: str) -> tuple[str, str]:
     for sep in (" - ", " — ", " – ", " | "):
         if sep in title:
