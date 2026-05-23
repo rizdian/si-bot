@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections import deque
 from typing import Optional
 
@@ -62,6 +63,9 @@ class QueuePaginationView(discord.ui.View):
 
 
 class MusicControllerView(discord.ui.View):
+    _skip_cooldowns: dict[int, float] = {}
+    _SKIP_COOLDOWN = 60
+
     def __init__(self, player: "MusicPlayer"):
         super().__init__(timeout=None)
         self.player = player
@@ -131,6 +135,16 @@ class MusicControllerView(discord.ui.View):
             return await interaction.response.send_message(
                 embed=error_embed("Tidak ada lagu yang diputar."), ephemeral=True,
             )
+
+        now = time.time()
+        last = self._skip_cooldowns.get(interaction.user.id, 0)
+        remaining = int(self._SKIP_COOLDOWN - (now - last))
+        if remaining > 0:
+            return await interaction.response.send_message(
+                embed=warning_embed(f"⏳ Tunggu **{remaining}** detik lagi sebelum skip."), ephemeral=True,
+            )
+
+        self._skip_cooldowns[interaction.user.id] = now
         vc.stop()
         await interaction.response.send_message(
             embed=success_embed(f"⏭️ Lagu diskip oleh {interaction.user.mention}"), ephemeral=True,
