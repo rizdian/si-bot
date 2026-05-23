@@ -115,6 +115,8 @@ def register_music_commands(tree: app_commands.CommandTree, client: discord.Clie
 
         if interaction.guild_id in players:
             player = players.pop(interaction.guild_id)
+            player.autoplay = False
+            player._cancel_prefetch()
             if player.vc and player.vc.is_playing():
                 player.vc.stop()
 

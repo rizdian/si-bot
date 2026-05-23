@@ -4,6 +4,7 @@ import discord
 from discord import app_commands
 
 from config import GUILD_ID, OWNER_USER_ID
+from commands.music.player import players
 from utils.logger import send_log_embed, format_datetime, now_utc
 
 
@@ -265,6 +266,11 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
             return
 
         await vc.disconnect()
+
+        player = players.get(interaction.guild_id)
+        if player:
+            player.autoplay = False
+            player._cancel_prefetch()
 
         await interaction.response.send_message(
             "👋 Keluar dari voice channel",

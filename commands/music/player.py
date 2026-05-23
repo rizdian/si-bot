@@ -163,6 +163,7 @@ class MusicControllerView(discord.ui.View):
         vc = interaction.guild.voice_client
         player = players.get(interaction.guild_id)
         if player:
+            player.autoplay = False
             player._cancel_prefetch()
         if vc:
             vc.stop()
