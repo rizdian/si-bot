@@ -7,7 +7,7 @@ import discord
 
 from config import OWNER_USER_ID
 from .source import YTDLSource, get_related_video_url
-from .spotify import spotify_recommend, spotify_fallback_artist_track
+from .spotify import spotify_recommend, spotify_fallback_artist_track, ai_recommend_music
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
 from utils.redis_cache import invalidate
@@ -347,19 +347,26 @@ class MusicPlayer:
         if query:
             source_label = "Spotify Recommend"
         else:
-            query = spotify_fallback_artist_track(last_title, exclude=exclude_titles)
+            ai_session = self.interaction.client.ai_session
+            query = await ai_recommend_music(
+                last_title, exclude=exclude_titles, session=ai_session,
+            )
             if query:
-                source_label = "Spotify Related Artist"
+                source_label = "AI Recommend"
             else:
-                related_url = await get_related_video_url(
-                    last_source.data, exclude_ids=exclude_ids,
-                )
-                if related_url:
-                    query = related_url
-                    source_label = "YouTube Related"
+                query = spotify_fallback_artist_track(last_title, exclude=exclude_titles)
+                if query:
+                    source_label = "Spotify Related Artist"
                 else:
-                    query = f"ytsearch1:{last_title}"
-                    source_label = "YouTube Search"
+                    related_url = await get_related_video_url(
+                        last_source.data, exclude_ids=exclude_ids,
+                    )
+                    if related_url:
+                        query = related_url
+                        source_label = "YouTube Related"
+                    else:
+                        query = f"ytsearch1:{last_title}"
+                        source_label = "YouTube Search"
 
         try:
             result = await YTDLSource.from_url(

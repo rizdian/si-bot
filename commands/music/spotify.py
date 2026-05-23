@@ -1,8 +1,11 @@
 import logging
 import random
+import re
 from typing import Optional
 
-from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
+import aiohttp
+
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, OPENROUTER_API_KEY, OPENROUTER_MODEL
 
 logger = logging.getLogger("bot")
 
@@ -195,4 +198,94 @@ def spotify_fallback_artist_track(title: str, exclude: set[str] | None = None) -
         return None
     except Exception as e:
         logger.warning("Spotify fallback artist failed for '%s': %s", title, e)
+        return None
+
+
+def _parse_title_artist(title: str) -> tuple[str, str]:
+    for sep in (" - ", " — ", " – ", " | "):
+        if sep in title:
+            parts = title.split(sep, 1)
+            return parts[0].strip(), parts[1].strip()
+    if " by " in title.lower():
+        idx = title.lower().index(" by ")
+        return title[:idx].strip(), title[idx + 4:].strip()
+    words = title.split()
+    if len(words) > 1:
+        return " ".join(words[:len(words) // 2]), " ".join(words[len(words) // 2:])
+    return title, ""
+
+
+async def ai_recommend_music(
+    title: str,
+    exclude: set[str] | None = None,
+    session: aiohttp.ClientSession | None = None,
+) -> Optional[str]:
+    if not OPENROUTER_API_KEY or not session:
+        return None
+
+    exclude = exclude or set()
+    artist, track_name = _parse_title_artist(title)
+
+    if track_name:
+        song_desc = f"'{track_name}' by {artist}"
+    else:
+        song_desc = f"'{title}'"
+
+    prompt = (
+        f"Give me exactly 5 song recommendations that are similar in mood, "
+        f"style, or genre to {song_desc}. "
+        f"Format: one per line, only 'Song Title - Artist Name'. "
+        f"No numbers, no explanations, no extra text."
+    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a music recommendation engine. "
+                "Always respond with exactly 5 lines. "
+                "Each line must be: Song Title - Artist Name. "
+                "No other text."
+            ),
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+    try:
+        from commands.ai import ask_openrouter
+        reply = await ask_openrouter(session, messages)
+
+        if not reply or "❌" in reply:
+            return None
+
+        candidates = []
+        for line in reply.strip().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            clean = re.sub(r"^[\d\.\)\-\s]+", "", line).strip()
+            clean = re.sub(r"[*\"`]", "", clean).strip()
+            if " - " in clean:
+                parts = clean.split(" - ", 1)
+                song = parts[0].strip()
+                art = parts[1].strip()
+            elif " by " in clean.lower():
+                idx = clean.lower().index(" by ")
+                song = clean[:idx].strip()
+                art = clean[idx + 4:].strip()
+            else:
+                continue
+
+            key = f"{song.lower()} {art.lower()}"
+            if key not in exclude:
+                candidates.append(f"{song} {art}")
+
+        if candidates:
+            chosen = random.choice(candidates)
+            logger.info("AI recommend for '%s' -> '%s'", title, chosen)
+            return chosen
+
+        return None
+    except Exception as e:
+        logger.warning("AI recommend failed for '%s': %s", title, e)
         return None
