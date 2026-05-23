@@ -67,6 +67,14 @@ class MusicControllerView(discord.ui.View):
         self.player = player
         self._sync_buttons()
 
+    def _check_voice(self, interaction: discord.Interaction):
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            return "Kamu harus join voice channel dulu!"
+        vc = interaction.guild.voice_client
+        if vc and interaction.user.voice.channel != vc.channel:
+            return "Kamu harus di voice channel yang sama dengan bot!"
+        return None
+
     def _sync_buttons(self):
         for item in self.children:
             if isinstance(item, discord.ui.Button):
@@ -85,6 +93,9 @@ class MusicControllerView(discord.ui.View):
 
     @discord.ui.button(label="Pause", emoji="⏸️", style=discord.ButtonStyle.secondary)
     async def pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         vc = interaction.guild.voice_client
         if not vc:
             return await interaction.response.send_message(
@@ -98,14 +109,23 @@ class MusicControllerView(discord.ui.View):
         if vc.is_paused():
             vc.resume()
             button.label, button.emoji = "Pause", "⏸️"
+            action = "Resume"
         else:
             vc.pause()
             button.label, button.emoji = "Resume", "▶️"
+            action = "Pause"
 
         await interaction.response.edit_message(view=self)
+        await interaction.followup.send(
+            embed=success_embed(f"{action} oleh {interaction.user.mention}"),
+            ephemeral=False,
+        )
 
     @discord.ui.button(label="Skip", emoji="⏭️", style=discord.ButtonStyle.secondary)
     async def skip_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         vc = interaction.guild.voice_client
         if not vc or not vc.is_playing():
             return await interaction.response.send_message(
@@ -113,11 +133,14 @@ class MusicControllerView(discord.ui.View):
             )
         vc.stop()
         await interaction.response.send_message(
-            embed=success_embed("⏭️ Lagu diskip."), ephemeral=True,
+            embed=success_embed(f"⏭️ Lagu diskip oleh {interaction.user.mention}"), ephemeral=True,
         )
 
     @discord.ui.button(label="Stop", emoji="⏹️", style=discord.ButtonStyle.danger)
     async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         if interaction.user.id != OWNER_USER_ID:
             return await interaction.response.send_message(
                 embed=error_embed("❌ Kamu bukan owner."), ephemeral=True
@@ -132,12 +155,15 @@ class MusicControllerView(discord.ui.View):
             await vc.disconnect()
         players.pop(interaction.guild_id, None)
         await interaction.response.edit_message(
-            embed=success_embed("👋 Playback dihentikan."),
+            embed=success_embed(f"👋 Playback dihentikan oleh {interaction.user.mention}."),
             view=None,
         )
 
     @discord.ui.button(label="Queue", emoji="📜", style=discord.ButtonStyle.primary)
     async def queue_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         player = players.get(interaction.guild_id)
         upcoming = list(player.queue._queue) if player else []
         if not upcoming:
@@ -151,6 +177,9 @@ class MusicControllerView(discord.ui.View):
 
     @discord.ui.button(label="Loop: Off", emoji="🔁", style=discord.ButtonStyle.secondary)
     async def loop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         player = players.get(interaction.guild_id)
         if not player:
             return await interaction.response.send_message(
@@ -169,9 +198,16 @@ class MusicControllerView(discord.ui.View):
             player._played_sources.clear()
 
         await interaction.response.edit_message(view=self)
+        await interaction.followup.send(
+            embed=success_embed(f"🔁 {_LOOP_LABELS[nxt]} oleh {interaction.user.mention}"),
+            ephemeral=False,
+        )
 
     @discord.ui.button(label="Autoplay: Off", emoji="🔀", style=discord.ButtonStyle.secondary)
     async def autoplay_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         player = players.get(interaction.guild_id)
         if not player:
             return await interaction.response.send_message(
@@ -191,9 +227,17 @@ class MusicControllerView(discord.ui.View):
             player._cancel_prefetch()
 
         await interaction.response.edit_message(view=self)
+        state = "On" if player.autoplay else "Off"
+        await interaction.followup.send(
+            embed=success_embed(f"🔀 Autoplay: {state} oleh {interaction.user.mention}"),
+            ephemeral=False,
+        )
 
     @discord.ui.button(label="Lyrics", emoji="🎤", style=discord.ButtonStyle.secondary)
     async def lyrics_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        err = self._check_voice(interaction)
+        if err:
+            return await interaction.response.send_message(embed=error_embed(err), ephemeral=True)
         player = players.get(interaction.guild_id)
         if not player or not player.current:
             return await interaction.response.send_message(
