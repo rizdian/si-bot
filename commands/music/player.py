@@ -362,11 +362,20 @@ class MusicPlayer:
                     source_label = "YouTube Search"
 
         try:
-            source = await YTDLSource.from_url(
+            result = await YTDLSource.from_url(
                 query,
                 loop=self.interaction.client.loop,
                 stream=True,
             )
+
+            if isinstance(result, dict) and "entries" in result:
+                entries = [e for e in result["entries"] if e]
+                if not entries:
+                    return
+                source = await YTDLSource.create_source(entries[0], stream=True)
+            else:
+                source = result
+
             source.requester = self.interaction.guild.me
             await self.queue.put(source)
             self._record_played(source.title)

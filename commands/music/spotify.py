@@ -7,6 +7,7 @@ from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET
 logger = logging.getLogger("bot")
 
 sp: Optional[object] = None
+_valid_genre_seeds: set[str] = set()
 
 if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
     try:
@@ -20,6 +21,10 @@ if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
             )
         )
         logger.info("Spotify client initialized")
+        try:
+            _valid_genre_seeds.update(sp.recommendation_genre_seeds().get("genres", []))
+        except Exception:
+            pass
     except Exception as e:
         logger.error("Failed to initialize Spotify client: %s", e)
 else:
@@ -116,7 +121,10 @@ def spotify_recommend(title: str, exclude: set[str] | None = None) -> Optional[s
         try:
             artist_data = sp.artist(artist_id)
             genres = artist_data.get("genres", [])
-            seed_genres = genres[:2]
+            if _valid_genre_seeds:
+                seed_genres = [g for g in genres if g in _valid_genre_seeds][:2]
+            else:
+                seed_genres = genres[:1]
         except Exception:
             pass
 
@@ -126,7 +134,11 @@ def spotify_recommend(title: str, exclude: set[str] | None = None) -> Optional[s
         if seed_genres:
             seeds["seed_genres"] = seed_genres[:2]
 
-        recs = sp.recommendations(**seeds)
+        try:
+            recs = sp.recommendations(**seeds)
+        except Exception:
+            seeds.pop("seed_genres", None)
+            recs = sp.recommendations(**seeds)
         rec_tracks = recs.get("tracks", [])
 
         candidates = []
