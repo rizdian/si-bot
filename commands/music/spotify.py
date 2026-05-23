@@ -10,7 +10,6 @@ from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, OPENROUTER_API_KEY,
 logger = logging.getLogger("bot")
 
 sp: Optional[object] = None
-_valid_genre_seeds: set[str] = set()
 
 if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
     try:
@@ -24,10 +23,6 @@ if SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET:
             )
         )
         logger.info("Spotify client initialized")
-        try:
-            _valid_genre_seeds.update(sp.recommendation_genre_seeds().get("genres", []))
-        except Exception:
-            pass
     except Exception as e:
         logger.error("Failed to initialize Spotify client: %s", e)
 else:
@@ -101,65 +96,6 @@ def spotify_search_track(query: str) -> Optional[str]:
         return refined_query
     except Exception as e:
         logger.warning("Spotify search failed for '%s': %s", query, e)
-        return None
-
-
-def spotify_recommend(title: str, exclude: set[str] | None = None) -> Optional[str]:
-    if not sp:
-        return None
-
-    exclude = exclude or set()
-
-    try:
-        results = sp.search(q=title, type="track", limit=1)
-        tracks = results.get("tracks", {}).get("items", [])
-        if not tracks:
-            return None
-
-        track = tracks[0]
-        track_id = track["id"]
-        artist_id = track["artists"][0]["id"]
-
-        seed_genres = []
-        try:
-            artist_data = sp.artist(artist_id)
-            genres = artist_data.get("genres", [])
-            if _valid_genre_seeds:
-                seed_genres = [g for g in genres if g in _valid_genre_seeds][:2]
-            else:
-                seed_genres = genres[:1]
-        except Exception:
-            pass
-
-        seeds = {"seed_tracks": [track_id], "limit": 8}
-        if artist_id:
-            seeds["seed_artists"] = [artist_id]
-        if seed_genres:
-            seeds["seed_genres"] = seed_genres[:2]
-
-        try:
-            recs = sp.recommendations(**seeds)
-        except Exception:
-            seeds.pop("seed_genres", None)
-            recs = sp.recommendations(**seeds)
-        rec_tracks = recs.get("tracks", [])
-
-        candidates = []
-        for t in rec_tracks:
-            artist_name = t["artists"][0]["name"]
-            track_name = t["name"]
-            key = f"{track_name.lower()} {artist_name.lower()}"
-            if key not in exclude:
-                candidates.append(f"{track_name} {artist_name}")
-
-        if candidates:
-            chosen = random.choice(candidates)
-            logger.info("Spotify recommend for '%s' -> '%s'", title, chosen)
-            return chosen
-
-        return None
-    except Exception as e:
-        logger.warning("Spotify recommend failed for '%s': %s", title, e)
         return None
 
 

@@ -7,7 +7,7 @@ import discord
 
 from config import OWNER_USER_ID
 from .source import YTDLSource, get_related_video_url
-from .spotify import spotify_recommend, spotify_fallback_artist_track, ai_recommend_music
+from .spotify import spotify_fallback_artist_track, ai_recommend_music
 from .embeds import build_now_playing_embed, error_embed, success_embed, warning_embed, info_embed
 from .lyrics import fetch_lyrics, extract_artist_title, send_lyrics
 from utils.redis_cache import invalidate
@@ -124,6 +124,9 @@ class MusicControllerView(discord.ui.View):
             )
 
         vc = interaction.guild.voice_client
+        player = players.get(interaction.guild_id)
+        if player:
+            player._cancel_prefetch()
         if vc:
             vc.stop()
             await vc.disconnect()
@@ -279,6 +282,7 @@ class MusicPlayer:
 
             self.current = source
             if not self.vc or not self.vc.is_connected():
+                self._cancel_prefetch()
                 self.current = None
                 continue
 
@@ -342,10 +346,6 @@ class MusicPlayer:
         exclude_titles = self._get_exclude_titles()
         exclude_ids = self._get_exclude_video_ids(source)
 
-        query = spotify_recommend(title, exclude=exclude_titles)
-        if query:
-            return query, "Spotify Recommend"
-
         ai_session = self.interaction.client.ai_session
         query = await ai_recommend_music(
             title, exclude=exclude_titles, session=ai_session,
@@ -389,8 +389,14 @@ class MusicPlayer:
 
         async def _do_prefetch():
             try:
+                if not self.vc or not self.vc.is_connected():
+                    return
                 query, label = await self._resolve_autoplay_query(source)
+                if not self.vc or not self.vc.is_connected():
+                    return
                 fetched = await self._fetch_source_from_query(query)
+                if not self.vc or not self.vc.is_connected():
+                    return
                 if fetched:
                     fetched.requester = self.interaction.guild.me
                     self._prefetched_source = fetched
@@ -492,6 +498,7 @@ class MusicPlayer:
             self._played_sources.append(source)
 
     async def destroy(self):
+        self._cancel_prefetch()
         if self.vc and self.vc.is_connected():
             await self.vc.disconnect()
 
