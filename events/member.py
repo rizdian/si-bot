@@ -10,18 +10,18 @@ logger = logging.getLogger("bot")
 def register_member_events(client: discord.Client):
     @client.event
     async def on_member_join(member: discord.Member) -> None:
-        await send_member_log_embed(
-            client=client,
-            member=member,
-            title="📥 MEMBER JOINED",
-            description=f"**{member}** baru saja join ke server!",
-            fields=[
-                ("👤 User", member.mention, False),
-                ("📅 Account Created", format_datetime(member.created_at), True),
-                ("🆔 ID", str(member.id), True),
-                ("👥 Member Count", str(member.guild.member_count), True),
-            ],
-        )
+        # await send_member_log_embed(
+        #     client=client,
+        #     member=member,
+        #     title="📥 MEMBER JOINED",
+        #     description=f"**{member}** baru saja join ke server!",
+        #     fields=[
+        #         ("👤 User", member.mention, False),
+        #         ("📅 Account Created", format_datetime(member.created_at), True),
+        #         ("🆔 ID", str(member.id), True),
+        #         ("👥 Member Count", str(member.guild.member_count), True),
+        #     ],
+        # )
 
         # 2. Auto Welcome Message with Langit
         if WELCOME_CHANNEL_ID:
@@ -126,20 +126,20 @@ def register_member_events(client: discord.Client):
                 except Exception as e:
                     logger.error(f"Gagal memberikan role: {e}")
 
-    @client.event
-    async def on_member_remove(member: discord.Member) -> None:
-        await send_member_log_embed(
-            client=client,
-            member=member,
-            title="📤 MEMBER LEFT",
-            description=f"**{member}** telah keluar dari server.",
-            fields=[
-                ("👤 User", str(member), False),
-                ("🆔 ID", str(member.id), True),
-                ("📅 Joined At", format_datetime(member.joined_at), True),
-                ("👥 Member Count", str(member.guild.member_count), True),
-            ],
-        )
+    # @client.event
+    # async def on_member_remove(member: discord.Member) -> None:
+    #     await send_member_log_embed(
+    #         client=client,
+    #         member=member,
+    #         title="📤 MEMBER LEFT",
+    #         description=f"**{member}** telah keluar dari server.",
+    #         fields=[
+    #             ("👤 User", str(member), False),
+    #             ("🆔 ID", str(member.id), True),
+    #             ("📅 Joined At", format_datetime(member.joined_at), True),
+    #             ("👥 Member Count", str(member.guild.member_count), True),
+    #         ],
+    #     )
 
     @client.event
     async def on_member_update(before: discord.Member, after: discord.Member) -> None:
