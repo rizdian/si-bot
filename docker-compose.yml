@@ -6,6 +6,7 @@ services:
     environment:
       - DISCORD_TOKEN
       - LOG_CHANNEL_ID
+      - LOG_MEMBER_CHANNEL_ID
       - OWNER_USER_ID
       - GUILD_ID
       - API_KEY_AI
