@@ -1,6 +1,6 @@
 import logging
 import discord
-from utils.logger import send_log_embed, format_datetime
+from utils.logger import send_log_embed, send_member_log_embed, format_datetime
 from config import WELCOME_CHANNEL_ID, WELCOME_PROMPT, ROLE_BOYS_ID, ROLE_GIRLS_ID, EMOJI_BOY, EMOJI_GIRL, AI_PERSONALITY
 from commands.ai import ask_openrouter
 
@@ -10,15 +10,16 @@ logger = logging.getLogger("bot")
 def register_member_events(client: discord.Client):
     @client.event
     async def on_member_join(member: discord.Member) -> None:
-        # 1. Log member join
-        # await send_log_embed(
+        # await send_member_log_embed(
         #     client=client,
+        #     member=member,
         #     title="📥 MEMBER JOINED",
-        #     color=discord.Color.green(),
+        #     description=f"**{member}** baru saja join ke server!",
         #     fields=[
         #         ("👤 User", member.mention, False),
-        #         ("📅 Created At", format_datetime(member.created_at), True),
+        #         ("📅 Account Created", format_datetime(member.created_at), True),
         #         ("🆔 ID", str(member.id), True),
+        #         ("👥 Member Count", str(member.guild.member_count), True),
         #     ],
         # )
 
@@ -127,28 +128,53 @@ def register_member_events(client: discord.Client):
 
     # @client.event
     # async def on_member_remove(member: discord.Member) -> None:
-    #     await send_log_embed(
+    #     await send_member_log_embed(
     #         client=client,
+    #         member=member,
     #         title="📤 MEMBER LEFT",
-    #         color=discord.Color.red(),
+    #         description=f"**{member}** telah keluar dari server.",
     #         fields=[
     #             ("👤 User", str(member), False),
     #             ("🆔 ID", str(member.id), True),
+    #             ("📅 Joined At", format_datetime(member.joined_at), True),
+    #             ("👥 Member Count", str(member.guild.member_count), True),
     #         ],
     #     )
-    #
-    # @client.event
-    # async def on_member_update(before: discord.Member, after: discord.Member) -> None:
-    #     if before.nick == after.nick:
-    #         return
-    #
-    #     await send_log_embed(
-    #         client=client,
-    #         title="📝 NICKNAME UPDATED",
-    #         color=discord.Color.orange(),
-    #         fields=[
-    #             ("👤 User", after.mention, False),
-    #             ("📌 Before", before.nick or before.name, True),
-    #             ("📌 After", after.nick or after.name, True),
-    #         ],
-    #     )
+
+    @client.event
+    async def on_member_update(before: discord.Member, after: discord.Member) -> None:
+        if before.nick != after.nick:
+            await send_member_log_embed(
+                client=client,
+                member=after,
+                title="📝 NICKNAME UPDATED",
+                fields=[
+                    ("👤 User", after.mention, False),
+                    ("📌 Before", before.nick or before.name, True),
+                    ("📌 After", after.nick or after.name, True),
+                ],
+            )
+
+        before_roles = set(before.roles)
+        after_roles = set(after.roles)
+
+        added = after_roles - before_roles
+        removed = before_roles - after_roles
+
+        if added or removed:
+            fields = [("👤 User", after.mention, False)]
+
+            if added:
+                added_str = ", ".join(r.mention for r in added)
+                fields.append(("➕ Added", added_str, False))
+
+            if removed:
+                removed_str = ", ".join(r.mention for r in removed)
+                fields.append(("➖ Removed", removed_str, False))
+
+            await send_member_log_embed(
+                client=client,
+                member=after,
+                title="🏷️ ROLES UPDATED",
+                fields=fields,
+            )
