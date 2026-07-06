@@ -139,7 +139,7 @@ def register_message_events(client: discord.Client):
 
             # Ambil riwayat pesan (misal 5 pesan terakhir sebelum pesan ini)
             history_lines = []
-            async for msg in message.channel.history(limit=5, before=message):
+            async for msg in message.channel.history(limit=2, before=message):
                 content = msg.content
                 # Bersihkan tag bot dari history jika ada
                 content = re.sub(r'<@!?%s>' % client.user.id, '', content).strip()

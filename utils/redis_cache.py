@@ -56,7 +56,6 @@ async def init_redis() -> bool:
             decode_responses=True,
             socket_connect_timeout=5,
             socket_timeout=5,
-            retry_on_timeout=True,
         )
         await _pool.ping()
         logger.info(

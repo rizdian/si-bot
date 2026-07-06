@@ -32,7 +32,7 @@ AI_COOLDOWN_SECONDS = 10
 AI_HISTORY_LIMIT = 2
 AI_MAX_TOKENS = 350
 AI_TIMEOUT_SECONDS = 20
-AI_MAX_RETRIES = 3
+AI_MAX_RETRIES = 2
 AI_CONCURRENT_LIMIT = 4
 
 ai_cooldowns: dict[int, float] = {}
@@ -198,7 +198,6 @@ async def stream_zai(session: aiohttp.ClientSession, messages: list[dict[str, st
                     ZAI_BASE_URL,
                     headers=headers,
                     json=payload,
-                    timeout=AI_TIMEOUT_SECONDS,
                 ) as resp:
                     if resp.status == 429:
                         if attempt < AI_MAX_RETRIES:
