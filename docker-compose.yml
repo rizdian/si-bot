@@ -23,6 +23,10 @@ services:
       - REDIS_DB
       - CACHE_TTL_STREAM
       - CACHE_TTL_META
+      - ZAI_API_KEY
+      - ZAI_MODEL
+      - ZAI_BASE_URL
+      - AI_PROVIDER
 
     networks:
       - default

@@ -50,6 +50,15 @@ OPENROUTER_BASE_URL = get_env_str(
 )
 OPENROUTER_KEY_URL = "https://openrouter.ai/api/v1/key"
 
+ZAI_API_KEY = get_env_str("ZAI_API_KEY")
+ZAI_MODEL = get_env_str("ZAI_MODEL", "glm-4")
+ZAI_BASE_URL = get_env_str(
+    "ZAI_BASE_URL",
+    "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+)
+
+AI_PROVIDER = get_env_str("AI_PROVIDER", "openrouter") # openrouter or zai
+
 SPOTIFY_CLIENT_ID = get_env_str("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = get_env_str("SPOTIFY_CLIENT_SECRET")
 
@@ -66,7 +75,6 @@ lu adalah "Tukang Ikut Campur", penghuni discord yang suka bantu member.
 
 gaya:
 - bahasa indonesia gaul/jakarta
-- pake gue/lu
 - huruf kecil semua
 - jawab pendek, natural, maksimal 1 paragraf
 - sarkas dikit, dry humor, nyebelin tapi jangan kasar beneran
