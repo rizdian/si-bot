@@ -68,54 +68,54 @@ def register_message_events(client: discord.Client):
             return
 
         # Logika untuk Owner Tag (Langit menjawab 1 kalimat)
-        # if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
-        #     from commands.ai import ask_openrouter, ai_cooldowns
-        #
-        #     # Cooldown check
-        #     now = asyncio.get_event_loop().time()
-        #     if message.author.id in ai_cooldowns and now - ai_cooldowns[message.author.id] < 10:
-        #         return
-        #
-        #     ai_cooldowns[message.author.id] = now
-        #
-        #     # Abaikan pesan yang terlalu pendek
-        #     if len(message.content.strip()) < 2:
-        #         return
-        #
-        #     # Ambil riwayat pesan (misal 5 pesan terakhir)
-        #     history_lines = []
-        #     async for msg in message.channel.history(limit=5, before=message):
-        #         author_name = msg.author.display_name
-        #         # Jika asisten yang jawab, pakai nama bot atau identitasnya
-        #         name = "Lu (Tukang Ikut Campur)" if msg.author.id == client.user.id else author_name
-        #         history_lines.append(f"- {name}: {msg.content}")
-        #     history_lines.reverse()
-        #
-        #     history_text = "\n".join(history_lines) if history_lines else "Gak ada obrolan sebelumnya."
-        #
-        #     prompt = message.content
-        #
-        #     owner_unavailable = "\n\n[KONTEKS PENTING: Owner sedang tidak available/tidak online. Jawab sebagai perwakilan owner bahwa owner sedang tidak bisa merespons.]" if IS_OWNER_INACTIVE else ""
-        #
-        #     # Tambahkan info tentang pengirim dan target mention untuk tag
-        #     author_info = f"- {message.author.display_name} (ID: {message.author.id})"
-        #     # Karena ini mention owner, tambahkan info owner juga
-        #     owner_member = message.guild.get_member(OWNER_USER_ID) if message.guild else None
-        #     owner_name = owner_member.display_name if owner_member else "Moderator"
-        #     owner_info = f"- {owner_name} (ID: {OWNER_USER_ID})"
-        #
-        #     # Tambahkan instruksi khusus agar jawaban hanya 1 kalimat
-        #     instruction = f"\n\n(Catatan: Jawab pesan ini hanya dalam 1 kalimat saja karena kamu sedang menanggapi mention ke Owner. Ini histori singkatnya:\n{history_text}\n\nKonteks User:\n{author_info}\n{owner_info}){owner_unavailable}"
-        #
-        #     messages = [
-        #         {"role": "system", "content": AI_PERSONALITY},
-        #         {"role": "user", "content": f"{message.author.display_name}: {prompt}{instruction}"}
-        #     ]
-        #
-        #     async with message.channel.typing():
-        #         reply = await ask_openrouter(client.ai_session, messages)
-        #         await message.reply(reply)
-        #     return  # Berhenti di sini agar tidak memicu logika Langit bot tag di bawah jika bot juga di-tag
+        if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
+            from commands.ai import ask_openrouter, ai_cooldowns
+
+            # Cooldown check
+            now = asyncio.get_event_loop().time()
+            if message.author.id in ai_cooldowns and now - ai_cooldowns[message.author.id] < 10:
+                return
+
+            ai_cooldowns[message.author.id] = now
+
+            # Abaikan pesan yang terlalu pendek
+            if len(message.content.strip()) < 2:
+                return
+
+            # Ambil riwayat pesan (misal 5 pesan terakhir)
+            history_lines = []
+            async for msg in message.channel.history(limit=1, before=message):
+                author_name = msg.author.display_name
+                # Jika asisten yang jawab, pakai nama bot atau identitasnya
+                name = "Lu (Tukang Ikut Campur)" if msg.author.id == client.user.id else author_name
+                history_lines.append(f"- {name}: {msg.content}")
+            history_lines.reverse()
+
+            history_text = "\n".join(history_lines) if history_lines else "Gak ada obrolan sebelumnya."
+
+            prompt = message.content
+
+            owner_unavailable = "\n\n[KONTEKS PENTING: Owner sedang tidak available/tidak online. Jawab sebagai perwakilan owner bahwa owner sedang tidak bisa merespons.]" if IS_OWNER_INACTIVE else ""
+
+            # Tambahkan info tentang pengirim dan target mention untuk tag
+            author_info = f"- {message.author.display_name} (ID: {message.author.id})"
+            # Karena ini mention owner, tambahkan info owner juga
+            owner_member = message.guild.get_member(OWNER_USER_ID) if message.guild else None
+            owner_name = owner_member.display_name if owner_member else "Moderator"
+            owner_info = f"- {owner_name} (ID: {OWNER_USER_ID})"
+
+            # Tambahkan instruksi khusus agar jawaban hanya 1 kalimat
+            instruction = f"\n\n(Catatan: Jawab pesan ini hanya dalam 1 kalimat saja karena kamu sedang menanggapi mention ke Owner. Ini histori singkatnya:\n{history_text}\n\nKonteks User:\n{author_info}\n{owner_info}){owner_unavailable}"
+
+            messages = [
+                {"role": "system", "content": AI_PERSONALITY},
+                {"role": "user", "content": f"{message.author.display_name}: {prompt}{instruction}"}
+            ]
+
+            async with message.channel.typing():
+                reply = await ask_openrouter(client.ai_session, messages)
+                await message.reply(reply)
+            return  # Berhenti di sini agar tidak memicu logika Langit bot tag di bawah jika bot juga di-tag
 
         # Logika Langit jika bot di-tag
         if client.user and client.user.mentioned_in(message):
