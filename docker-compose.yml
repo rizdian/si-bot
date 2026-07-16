@@ -27,6 +27,7 @@ services:
       - ZAI_MODEL
       - ZAI_BASE_URL
       - AI_PROVIDER
+      - TITLE_CHANNEL_ID
 
     networks:
       - default

@@ -10,6 +10,7 @@ from commands.general import register_general_commands
 from commands.ai import register_ai_commands
 from commands.music import register_music_commands
 from commands.afk import register_afk_commands
+from commands.title import register_title_commands
 from events.member import register_member_events
 from events.message import register_message_events
 from utils.logger_setup import setup_logger
@@ -41,6 +42,11 @@ class MyClient(discord.Client):
         register_ai_commands(self.tree, self)
         register_music_commands(self.tree, self)
         register_afk_commands(self.tree, self)
+        register_title_commands(self.tree, self)
+        
+        # Add persistent views
+        from commands.title import TitleView
+        self.add_view(TitleView())
 
         # Sync guild commands
         guild = discord.Object(id=GUILD_ID)
