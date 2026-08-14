@@ -5,7 +5,7 @@ import aiohttp
 import discord
 from discord import app_commands
 
-from config import TOKEN, LOG_CHANNEL_ID, GUILD_ID, AI_PROVIDER
+from config import TOKEN, LOG_CHANNEL_ID, GUILD_ID
 from commands.general import register_general_commands
 from commands.ai import register_ai_commands
 from commands.music import register_music_commands
@@ -72,7 +72,6 @@ async def on_ready() -> None:
     logger.info("✅ Login sebagai %s", client.user)
     logger.info("📡 Log Channel ID: %s", LOG_CHANNEL_ID)
     logger.info("🏠 Guild ID: %s", GUILD_ID)
-    logger.info("🤖 AI Provider: %s", AI_PROVIDER)
 
 
 register_member_events(client)

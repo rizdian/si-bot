@@ -15,10 +15,6 @@ from config import (
     OPENROUTER_BASE_URL,
     OPENROUTER_KEY_URL,
     OPENROUTER_MODEL,
-    ZAI_API_KEY,
-    ZAI_MODEL,
-    ZAI_BASE_URL,
-    AI_PROVIDER,
     AI_PERSONALITY,
     OWNER_USER_ID,
     WELCOME_PROMPT,
@@ -162,108 +158,9 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
     yield "❌ Bentar, lagi lag. Coba lagi nanti."
 
 
-async def stream_zai(session: aiohttp.ClientSession, messages: list[dict[str, str]]):
-    if not hasattr(session, "_zai_sem"):
-        session._zai_sem = asyncio.Semaphore(AI_CONCURRENT_LIMIT)
-
-    # Optimization: Check if this is a welcome message and if it's already in local cache
-    is_welcome = len(messages) == 2 and messages[0].get("content") == WELCOME_PROMPT
-    cache_key = None
-    if is_welcome:
-        cache_key = messages[1].get("content")
-        if cache_key in _welcome_cache:
-            yield _welcome_cache[cache_key]
-            return
-
-    headers = {
-        "Authorization": f"Bearer {ZAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": ZAI_MODEL,
-        "messages": messages,
-        "max_tokens": AI_MAX_TOKENS,
-        "temperature": 0.8,
-        "stream": True,
-    }
-
-    retry_delay = 1.5
-    full_reply_for_cache = ""
-
-    async with session._zai_sem:
-        for attempt in range(1, AI_MAX_RETRIES + 1):
-            try:
-                async with session.post(
-                    ZAI_BASE_URL,
-                    headers=headers,
-                    json=payload,
-                ) as resp:
-                    if resp.status == 429:
-                        if attempt < AI_MAX_RETRIES:
-                            await asyncio.sleep(retry_delay)
-                            retry_delay *= 2
-                            continue
-                        yield "❌ Sabar Gw lagi Loading (ZAI)."
-                        return
-
-                    if resp.status != 200:
-                        logger.error("ZAI error status=%s", resp.status)
-                        yield "❌ ZAI lagi error dikit."
-                        return
-
-                    async for line in resp.content:
-                        line = line.decode("utf-8").strip()
-                        if not line or line.startswith(":"):
-                            continue
-
-                        if line.startswith("data: "):
-                            data_str = line[len("data: "):]
-                            if data_str == "[DONE]":
-                                break
-
-                            try:
-                                data = json.loads(data_str)
-                                choices = data.get("choices") or []
-                                if choices:
-                                    delta = choices[0].get("delta") or {}
-                                    content = delta.get("content", "")
-                                    if content:
-                                        full_reply_for_cache += content
-                                        yield content
-                            except json.JSONDecodeError:
-                                continue
-                    
-                    if is_welcome and cache_key and full_reply_for_cache:
-                        _welcome_cache[cache_key] = full_reply_for_cache
-                        if len(_welcome_cache) > 100:
-                            first_key = next(iter(_welcome_cache))
-                            _welcome_cache.pop(first_key)
-                    return
-
-            except Exception:
-                logger.exception("Failed calling ZAI attempt=%s", attempt)
-
-            if attempt < AI_MAX_RETRIES:
-                await asyncio.sleep(retry_delay)
-                retry_delay *= 2
-
-    yield "❌ ZAI lagi lag. Coba lagi nanti."
-
-
-async def stream_ai(session: aiohttp.ClientSession, messages: list[dict[str, str]], provider: str = None):
-    provider = provider or AI_PROVIDER
-    if provider == "zai":
-        async for chunk in stream_zai(session, messages):
-            yield chunk
-    else:
-        async for chunk in stream_openrouter(session, messages):
-            yield chunk
-
-
 async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str, str]]) -> str:
     full_reply = ""
-    async for chunk in stream_ai(session, messages):
+    async for chunk in stream_openrouter(session, messages):
         if "[ERROR:" in chunk: # Special handling for mid-stream error representation
              pass 
         full_reply += chunk
@@ -365,34 +262,15 @@ def is_on_cooldown(user_id: int) -> tuple[bool, int]:
 
 def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client):
     @tree.command(
-        name="provider",
-        description="Ganti AI Provider (OpenRouter/ZAI)",
-        guild=TEST_GUILD,
-    )
-    @app_commands.choices(provider=[
-        app_commands.Choice(name="OpenRouter", value="openrouter"),
-        app_commands.Choice(name="Z.AI (GLM)", value="zai"),
-    ])
-    async def provider(interaction: discord.Interaction, provider: app_commands.Choice[str]) -> None:
-        if interaction.user.id != OWNER_USER_ID:
-            await interaction.response.send_message("❌ Cuma owner yang bisa ganti provider.", ephemeral=True)
-            return
-
-        global AI_PROVIDER
-        AI_PROVIDER = provider.value
-        await interaction.response.send_message(f"✅ AI Provider berhasil diganti ke **{provider.name}**.", ephemeral=True)
-
-    @tree.command(
         name="chat",
         description="Tanya Langit (AI)",
         guild=TEST_GUILD,
     )
     @app_commands.describe(prompt="Pertanyaan atau pesan untuk Langit")
     async def chat(interaction: discord.Interaction, prompt: str) -> None:
-        api_key = OPENROUTER_API_KEY if AI_PROVIDER == "openrouter" else ZAI_API_KEY
-        if not api_key:
+        if not OPENROUTER_API_KEY:
             await interaction.response.send_message(
-                f"❌ API key untuk {AI_PROVIDER} belum dikonfigurasi.",
+                "❌ API key OpenRouter belum dikonfigurasi.",
                 ephemeral=True,
             )
             return
@@ -456,7 +334,7 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
             last_update_time = asyncio.get_event_loop().time()
             update_interval = 1.5  # Update every 1.5 seconds to avoid Discord rate limits
 
-            async for chunk in stream_ai(client.ai_session, messages):
+            async for chunk in stream_openrouter(client.ai_session, messages):
                 reply += chunk
                 
                 now = asyncio.get_event_loop().time()
