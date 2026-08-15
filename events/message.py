@@ -101,7 +101,7 @@ def register_message_events(client: discord.Client):
             if cooldown or len(message.content.strip()) < MIN_PROMPT_LEN:
                 return
 
-            history_text = await build_history_lines(message.channel, message, 1, client.user.id)
+            history_text = await build_history_lines(message.channel, message, 2, client.user.id)
             history_text = history_text or "Gak ada obrolan sebelumnya."
 
             prompt = message.content
