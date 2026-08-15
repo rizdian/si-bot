@@ -10,7 +10,8 @@ services:
       - OWNER_USER_ID
       - GUILD_ID
       - API_KEY_AI
-      - OPENROUTER_MODEL
+      - OPENROUTER_FREE_MODEL
+      - OPENROUTER_PAID_MODEL
       - WELCOME_CHANNEL_ID
       - ROLE_BOYS_ID
       - ROLE_GIRLS_ID

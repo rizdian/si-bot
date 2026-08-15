@@ -15,7 +15,8 @@ from config import (
     OPENROUTER_API_KEY,
     OPENROUTER_BASE_URL,
     OPENROUTER_KEY_URL,
-    OPENROUTER_MODEL,
+    OPENROUTER_FREE_MODEL,
+    OPENROUTER_PAID_MODEL,
     AI_PERSONALITY,
     OWNER_USER_ID,
     WELCOME_PROMPT,
@@ -74,7 +75,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
     }
 
     payload = {
-        "model": OPENROUTER_MODEL,
+        "model": OPENROUTER_FREE_MODEL,
         "messages": messages,
         "max_tokens": AI_MAX_TOKENS,
         "temperature": 0.8,
@@ -85,9 +86,11 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
     retry_delay = 1.5
 
     full_reply_for_cache = ""
+    fallback_used = False
 
     async with session._openrouter_sem:
-        for attempt in range(1, AI_MAX_RETRIES + 1):
+        for attempt in range(1, AI_MAX_RETRIES * 2 + 1):
+            phase_attempt = (attempt - 1) % AI_MAX_RETRIES + 1
             try:
                 async with session.post(
                     OPENROUTER_BASE_URL,
@@ -95,18 +98,29 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                     json=payload,
                     timeout=AI_TIMEOUT_SECONDS,
                 ) as resp:
-                    if resp.status == 429:
-                        if attempt < AI_MAX_RETRIES:
+                    if resp.status == 429 or resp.status == 402:
+                        if phase_attempt < AI_MAX_RETRIES:
                             header_retry = resp.headers.get("Retry-After")
                             try:
                                 retry_delay = max(retry_delay, float(header_retry))
                             except (TypeError, ValueError):
                                 pass
-                            logger.warning("OpenRouter rate limited. retry=%s delay=%ss", attempt, retry_delay)
+                            logger.warning("OpenRouter %s attempt=%s delay=%ss", resp.status, attempt, retry_delay)
                             await asyncio.sleep(min(retry_delay, 30))
                             retry_delay *= 2
                             continue
-                        yield "❌ Sabar Gw lagi Loading."
+
+                        if not fallback_used:
+                            payload["model"] = OPENROUTER_PAID_MODEL
+                            fallback_used = True
+                            logger.info("Free model gagal, switch ke paid: %s", OPENROUTER_PAID_MODEL)
+                            retry_delay = 1.5
+                            continue
+
+                        if resp.status == 429:
+                            yield "❌ Sabar Gw lagi Loading."
+                            return
+                        yield "❌ Kredit habis. Coba lagi nanti."
                         return
 
                     if resp.status != 200:
@@ -115,7 +129,12 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                             error_msg = data.get("error", {}).get("message", "Unknown error")
                         except Exception:
                             error_msg = await resp.text()
-                        logger.error("OpenRouter error status=%s message=%s", resp.status, error_msg)
+                        logger.error("OpenRouter error status=%s model=%s message=%s", resp.status, payload["model"], error_msg)
+                        if not fallback_used:
+                            payload["model"] = OPENROUTER_PAID_MODEL
+                            fallback_used = True
+                            logger.info("Free model failed, switching to paid: %s", OPENROUTER_PAID_MODEL)
+                            continue
                         yield "❌ Lagi error dikit. Coba tag moderator aja."
                         return
 
@@ -143,7 +162,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                                 if usage:
                                     logger.info(
                                         "OpenRouter usage model=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s cost=%s",
-                                        data.get("model", OPENROUTER_MODEL),
+                                        data.get("model", payload["model"]),
                                         usage.get("prompt_tokens", 0),
                                         usage.get("completion_tokens", 0),
                                         usage.get("total_tokens", 0),
@@ -175,6 +194,11 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
             if attempt < AI_MAX_RETRIES:
                 await asyncio.sleep(retry_delay)
                 retry_delay *= 2
+            elif not fallback_used:
+                payload["model"] = OPENROUTER_PAID_MODEL
+                fallback_used = True
+                logger.info("Free model timeout/error, switch ke paid: %s", OPENROUTER_PAID_MODEL)
+                retry_delay = 1.5
 
     yield "❌ Bentar, lagi lag. Coba lagi nanti."
 

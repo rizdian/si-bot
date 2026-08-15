@@ -41,8 +41,12 @@ EMOJI_BOY = "👦"
 EMOJI_GIRL = "👧"
 
 OPENROUTER_API_KEY = get_env_str("API_KEY_AI")
-OPENROUTER_MODEL = get_env_str(
-    "OPENROUTER_MODEL",
+OPENROUTER_FREE_MODEL = get_env_str(
+    "OPENROUTER_FREE_MODEL",
+    "openrouter/free",
+)
+OPENROUTER_PAID_MODEL = get_env_str(
+    "OPENROUTER_PAID_MODEL",
     "openrouter/auto",
 )
 OPENROUTER_BASE_URL = get_env_str(

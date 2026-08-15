@@ -5,7 +5,7 @@ from typing import Optional
 
 import aiohttp
 
-from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, OPENROUTER_API_KEY, OPENROUTER_MODEL
+from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, OPENROUTER_API_KEY
 from commands.ai import ask_openrouter
 
 logger = logging.getLogger("bot")
