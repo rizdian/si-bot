@@ -139,6 +139,17 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                                     yield f"\n\n[ERROR: {error_msg}]"
                                     return
 
+                                usage = data.get("usage")
+                                if usage:
+                                    logger.info(
+                                        "OpenRouter usage model=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s cost=%s",
+                                        data.get("model", OPENROUTER_MODEL),
+                                        usage.get("prompt_tokens", 0),
+                                        usage.get("completion_tokens", 0),
+                                        usage.get("total_tokens", 0),
+                                        usage.get("cost", "N/A"),
+                                    )
+
                                 choices = data.get("choices") or []
                                 if choices:
                                     delta = choices[0].get("delta") or {}
