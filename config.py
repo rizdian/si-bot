@@ -43,7 +43,7 @@ EMOJI_GIRL = "👧"
 OPENROUTER_API_KEY = get_env_str("API_KEY_AI")
 OPENROUTER_MODEL = get_env_str(
     "OPENROUTER_MODEL",
-    "google/gemini-2.0-flash-exp:free",
+    "openrouter/auto",
 )
 OPENROUTER_BASE_URL = get_env_str(
     "OPENROUTER_BASE_URL",

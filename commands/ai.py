@@ -27,7 +27,7 @@ TEST_GUILD = discord.Object(id=GUILD_ID)
 AI_COOLDOWN_SECONDS = 10
 AI_HISTORY_LIMIT = 2
 AI_MAX_TOKENS = 350
-AI_TIMEOUT_SECONDS = 20
+AI_TIMEOUT_SECONDS = 60
 AI_MAX_RETRIES = 2
 AI_CONCURRENT_LIMIT = 4
 
@@ -90,8 +90,13 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                 ) as resp:
                     if resp.status == 429:
                         if attempt < AI_MAX_RETRIES:
+                            header_retry = resp.headers.get("Retry-After")
+                            try:
+                                retry_delay = max(retry_delay, float(header_retry))
+                            except (TypeError, ValueError):
+                                pass
                             logger.warning("OpenRouter rate limited. retry=%s delay=%ss", attempt, retry_delay)
-                            await asyncio.sleep(retry_delay)
+                            await asyncio.sleep(min(retry_delay, 30))
                             retry_delay *= 2
                             continue
                         yield "❌ Sabar Gw lagi Loading."
@@ -161,10 +166,11 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
 async def ask_openrouter(session: aiohttp.ClientSession, messages: list[dict[str, str]]) -> str:
     full_reply = ""
     async for chunk in stream_openrouter(session, messages):
-        if "[ERROR:" in chunk: # Special handling for mid-stream error representation
-             pass 
+        if chunk.startswith("[ERROR:"):
+            logger.warning("OpenRouter mid-stream error in reply: %s", chunk)
+            continue
         full_reply += chunk
-    
+
     return full_reply or "❌ Kosong jawabannya. Aneh bat."
 
 
@@ -185,14 +191,19 @@ async def get_openrouter_key_info(session: aiohttp.ClientSession) -> dict | str:
         return "❌ Error pas mau ngecek limit."
 
 
-async def build_user_history(channel: discord.abc.Messageable, client: discord.Client) -> list[dict[str, str]]:
+async def build_user_history(channel: discord.abc.Messageable, current_prompt: str) -> list[dict[str, str]]:
     history: list[dict[str, str]] = []
+    skipped_current = False
 
     async for msg in channel.history(limit=AI_HISTORY_LIMIT):
         if msg.author.bot:
             continue
 
         content = clean_text(msg.content, limit=500)
+        if not skipped_current and content == current_prompt:
+            skipped_current = True
+            continue
+
         if not content:
             continue
 
@@ -247,6 +258,10 @@ def is_on_cooldown(user_id: int) -> tuple[bool, int]:
     now = asyncio.get_event_loop().time()
     last_used = ai_cooldowns.get(user_id)
 
+    if last_used and now - last_used > AI_COOLDOWN_SECONDS * 10:
+        del ai_cooldowns[user_id]
+        last_used = None
+
     if not last_used:
         ai_cooldowns[user_id] = now
         return False, 0
@@ -290,7 +305,7 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
         try:
             prompt = clean_text(prompt, limit=1000)
 
-            history = await build_user_history(interaction.channel, client)
+            history = await build_user_history(interaction.channel, prompt)
             member_context = await build_member_context(interaction, prompt)
 
             system_content = AI_PERSONALITY

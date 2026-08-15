@@ -194,39 +194,3 @@ def register_message_events(client: discord.Client):
             async with message.channel.typing():
                 reply = await ask_openrouter(client.ai_session, messages)
                 await message.reply(reply)
-
-    # @client.event
-    # async def on_message_delete(message: discord.Message) -> None:
-    #     if message.author.bot:
-    #         return
-    #
-    #     await send_log_embed(
-    #         client=client,
-    #         title="🗑 MESSAGE DELETED",
-    #         color=discord.Color.red(),
-    #         fields=[
-    #             ("👤 Author", message.author.mention, False),
-    #             ("📍 Channel", message.channel.mention, True),
-    #             ("💬 Content", message.content or "[Empty/Embed]", False),
-    #         ],
-    #     )
-
-    # @client.event
-    # async def on_message_edit(before: discord.Message, after: discord.Message) -> None:
-    #     if before.author.bot:
-    #         return
-    #
-    #     if before.content == after.content:
-    #         return
-    #
-    #     await send_log_embed(
-    #         client=client,
-    #         title="✏ MESSAGE EDITED",
-    #         color=discord.Color.blue(),
-    #         fields=[
-    #             ("👤 Author", before.author.mention, False),
-    #             ("📍 Channel", before.channel.mention, True),
-    #             ("📌 Before", before.content or "[Empty]", False),
-    #             ("📌 After", after.content or "[Empty]", False),
-    #         ],
-    #     )
