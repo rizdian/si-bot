@@ -323,13 +323,16 @@ async def build_chat_messages(interaction: discord.Interaction, prompt: str) -> 
 
 
 def build_chat_embed(prompt: str) -> discord.Embed:
-    embed = discord.Embed(title="🤖 Langit Chat", color=discord.Color.green())
+    embed = discord.Embed(
+        title="🤖 Langit Chat",
+        description="Memproses...",
+        color=discord.Color.green(),
+    )
     embed.add_field(
         name="💬 Pertanyaan",
         value=prompt[:EMBED_FIELD_LIMIT] or "-",
         inline=False,
     )
-    embed.add_field(name="🧠 Jawaban", value="Sedang berpikir...", inline=False)
     return embed
 
 
@@ -347,14 +350,23 @@ async def stream_reply_into_embed(
 
         now = time.monotonic()
         if now - last_update > STREAM_UPDATE_INTERVAL:
-            display = clean_text(reply, limit=EMBED_FIELD_LIMIT) or "..."
-            embed.set_field_at(1, name="🧠 Jawaban", value=display, inline=False)
+            display = clean_text(reply, limit=4096) or "..."
+            embed.description = display
             try:
                 await message.edit(embed=embed)
             except discord.NotFound:
+                logger.warning("Streaming AI message deleted message_id=%s", message.id)
                 break
-            except Exception as e:
-                logger.warning("Failed to update streaming message: %s", e)
+            except discord.HTTPException as e:
+                logger.warning(
+                    "Discord rejected streaming AI update message_id=%s status=%s code=%s error=%s",
+                    message.id,
+                    e.status,
+                    e.code,
+                    e,
+                )
+            except Exception:
+                logger.exception("Unexpected streaming AI update error message_id=%s", message.id)
             last_update = now
 
     return reply
@@ -362,15 +374,23 @@ async def stream_reply_into_embed(
 
 async def finalize_reply_embed(message: discord.Message, embed: discord.Embed, reply: str) -> str:
     final_reply = clean_text(reply, limit=MAX_REPLY_LEN)
-    display = final_reply[:EMBED_FIELD_LIMIT] or "❌ Kosong jawabannya."
-    embed.set_field_at(1, name="🧠 Jawaban", value=display, inline=False)
+    display = final_reply[:4000] or "❌ Kosong jawabannya."
+    embed.description = display
 
     try:
         await message.edit(embed=embed)
     except discord.NotFound:
-        pass
-    except Exception as e:
-        logger.warning("Failed final update of streaming message: %s", e)
+        logger.error("Final AI message not found message_id=%s", message.id)
+    except discord.HTTPException as e:
+        logger.error(
+            "Discord rejected final AI response message_id=%s status=%s code=%s error=%s",
+            message.id,
+            e.status,
+            e.code,
+            e,
+        )
+    except Exception:
+        logger.exception("Unexpected final AI response error message_id=%s", message.id)
 
     return final_reply
 
