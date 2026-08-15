@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 
 from config import GUILD_ID
-from utils.afk import set_afk, get_all_afk, format_duration
+from utils.afk import set_afk, get_all_afk, format_duration, is_afk
 from utils.logger import now_utc
 
 TEST_GUILD = discord.Object(id=GUILD_ID)
@@ -37,7 +37,6 @@ def register_afk_commands(tree: app_commands.CommandTree, client: discord.Client
             )
             return
 
-        from utils.afk import is_afk
         if is_afk(member.id):
             await interaction.response.send_message(
                 "❌ Lu udah AFK belom tadi, santuy.",

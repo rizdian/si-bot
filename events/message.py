@@ -1,14 +1,44 @@
 import discord
 import re
-import asyncio
 
 from config import OWNER_USER_ID, AI_PERSONALITY, IS_OWNER_INACTIVE
 from utils.afk import is_afk, remove_afk, get_afk, format_duration
+from commands.ai import ask_openrouter, is_on_cooldown
 
 MAINKAN_PATTERN = re.compile(r"^mainkan\s+(.+)", re.IGNORECASE)
 
+MIN_PROMPT_LEN = 2
+SPAM_WORDS = {"w", "ok", "p", "halo", "test"}
+
+
 def is_manual_mention(message: discord.Message, user_id: int) -> bool:
     return f"<@{user_id}>" in message.content or f"<@!{user_id}>" in message.content
+
+
+def strip_mention(text: str, user_id: int) -> str:
+    return re.sub(rf"<@!?{user_id}>", "", text).strip()
+
+
+async def build_history_lines(
+    channel: discord.abc.Messageable,
+    before: discord.Message,
+    limit: int,
+    bot_id: int,
+    strip_bot_mention: bool = False,
+) -> str:
+    lines = []
+
+    async for msg in channel.history(limit=limit, before=before):
+        content = msg.content
+        if strip_bot_mention:
+            content = strip_mention(content, bot_id)
+        if not content:
+            continue
+        name = "Lu (Tukang Ikut Campur)" if msg.author.id == bot_id else msg.author.display_name
+        lines.append(f"- {name}: {content}")
+
+    lines.reverse()
+    return "\n".join(lines)
 
 def register_message_events(client: discord.Client):
     @client.event
@@ -32,12 +62,11 @@ def register_message_events(client: discord.Client):
 
         # ── Notify when mentioning an AFK user ───────────────────────────
         if message.guild and message.mentions:
-            from utils.afk import is_afk as check_afk, get_afk as get_user_afk, format_duration as fmt_dur
             for mentioned in message.mentions:
-                if check_afk(mentioned.id):
-                    afk_info = get_user_afk(mentioned.id)
+                if is_afk(mentioned.id):
+                    afk_info = get_afk(mentioned.id)
                     if afk_info:
-                        dur = fmt_dur(afk_info["timestamp"])
+                        dur = format_duration(afk_info["timestamp"])
                         reason_text = f" — *{afk_info.get('reason')}*" if afk_info.get("reason") else ""
                         await message.reply(
                             f"💤 **{mentioned.display_name}** lagi AFK ({dur}){reason_text}",
@@ -67,31 +96,13 @@ def register_message_events(client: discord.Client):
             )
             return
 
-        # Logika untuk Owner Tag (Langit menjawab 1 kalimat)
         if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
-            from commands.ai import ask_openrouter, ai_cooldowns
-
-            # Cooldown check
-            now = asyncio.get_event_loop().time()
-            if message.author.id in ai_cooldowns and now - ai_cooldowns[message.author.id] < 10:
+            cooldown, _ = is_on_cooldown(message.author.id)
+            if cooldown or len(message.content.strip()) < MIN_PROMPT_LEN:
                 return
 
-            ai_cooldowns[message.author.id] = now
-
-            # Abaikan pesan yang terlalu pendek
-            if len(message.content.strip()) < 2:
-                return
-
-            # Ambil riwayat pesan (misal 5 pesan terakhir)
-            history_lines = []
-            async for msg in message.channel.history(limit=1, before=message):
-                author_name = msg.author.display_name
-                # Jika asisten yang jawab, pakai nama bot atau identitasnya
-                name = "Lu (Tukang Ikut Campur)" if msg.author.id == client.user.id else author_name
-                history_lines.append(f"- {name}: {msg.content}")
-            history_lines.reverse()
-
-            history_text = "\n".join(history_lines) if history_lines else "Gak ada obrolan sebelumnya."
+            history_text = await build_history_lines(message.channel, message, 1, client.user.id)
+            history_text = history_text or "Gak ada obrolan sebelumnya."
 
             prompt = message.content
 
@@ -117,39 +128,21 @@ def register_message_events(client: discord.Client):
                 await message.reply(reply)
             return  # Berhenti di sini agar tidak memicu logika Langit bot tag di bawah jika bot juga di-tag
 
-        # Logika Langit jika bot di-tag
         if client.user and client.user.mentioned_in(message):
-            from commands.ai import ask_openrouter, ai_cooldowns
-            
-            # Cooldown check
-            now = asyncio.get_event_loop().time()
-            if message.author.id in ai_cooldowns and now - ai_cooldowns[message.author.id] < 10:
+            cooldown, _ = is_on_cooldown(message.author.id)
+            if cooldown:
                 return
 
-            ai_cooldowns[message.author.id] = now
+            prompt = strip_mention(message.content, client.user.id)
 
-            # Bersihkan tag bot dari konten saat ini untuk cek panjang pesan
-            prompt = message.content
-            prompt = re.sub(r'<@!?%s>' % client.user.id, '', prompt).strip()
+            if len(prompt) < MIN_PROMPT_LEN or prompt.lower() in SPAM_WORDS:
+                if not prompt:
+                    return
 
-            # Abaikan pesan yang terlalu pendek atau spam
-            if len(prompt) < 2 or prompt.lower() in ["w", "ok", "p", "halo", "test"]:
-                # Kalau cuma ngetag doang tanpa pesan, mungkin mau nyapa, tapi kita filter biar hemat
-                if not prompt: return
-
-            # Ambil riwayat pesan (misal 5 pesan terakhir sebelum pesan ini)
-            history_lines = []
-            async for msg in message.channel.history(limit=2, before=message):
-                content = msg.content
-                # Bersihkan tag bot dari history jika ada
-                content = re.sub(r'<@!?%s>' % client.user.id, '', content).strip()
-                if content:
-                    author_name = msg.author.display_name
-                    name = "Lu (Tukang Ikut Campur)" if msg.author.id == client.user.id else author_name
-                    history_lines.append(f"- {name}: {content}")
-            history_lines.reverse()
-            
-            history_context = "Histori obrolan sebelumnya:\n" + "\n".join(history_lines) if history_lines else ""
+            history_lines = await build_history_lines(
+                message.channel, message, 2, client.user.id, strip_bot_mention=True
+            )
+            history_context = f"Histori obrolan sebelumnya:\n{history_lines}" if history_lines else ""
 
             # Sertakan nama pengirim saat ini juga
             prompt_with_author = f"{message.author.display_name}: {prompt}" if prompt else "Halo"

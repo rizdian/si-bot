@@ -4,6 +4,7 @@ import logging
 import re
 import asyncio
 import json
+import time
 
 import aiohttp
 import discord
@@ -30,6 +31,13 @@ AI_MAX_TOKENS = 350
 AI_TIMEOUT_SECONDS = 60
 AI_MAX_RETRIES = 2
 AI_CONCURRENT_LIMIT = 4
+MAX_PROMPT_LEN = 1000
+MAX_HISTORY_MSG_LEN = 500
+MAX_SYSTEM_LEN = 1500
+EMBED_FIELD_LIMIT = 1024
+MAX_REPLY_LEN = 4000
+REPLY_CHUNK_LEN = 1900
+STREAM_UPDATE_INTERVAL = 1.5
 
 ai_cooldowns: dict[int, float] = {}
 
@@ -50,7 +58,6 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
     if not hasattr(session, "_openrouter_sem"):
         session._openrouter_sem = asyncio.Semaphore(AI_CONCURRENT_LIMIT)
 
-    # Optimization: Check if this is a welcome message and if it's already in local cache
     is_welcome = len(messages) == 2 and messages[0].get("content") == WELCOME_PROMPT
     cache_key = None
     if is_welcome:
@@ -62,7 +69,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/si-bot", # Optional, but good for OpenRouter
+        "HTTP-Referer": "https://github.com/si-bot",
         "X-Title": "Si-Bot Discord",
     }
 
@@ -72,10 +79,10 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
         "max_tokens": AI_MAX_TOKENS,
         "temperature": 0.8,
         "stream": True,
-        "transforms": ["middle-out"] # OpenRouter specific optimization
+        "transforms": ["middle-out"],
     }
 
-    retry_delay = 1.5 # Reduced initial retry delay
+    retry_delay = 1.5
 
     full_reply_for_cache = ""
 
@@ -145,10 +152,8 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                     
                     if is_welcome and cache_key and full_reply_for_cache:
                         _welcome_cache[cache_key] = full_reply_for_cache
-                        # Limit cache size
                         if len(_welcome_cache) > 100:
-                            first_key = next(iter(_welcome_cache))
-                            _welcome_cache.pop(first_key)
+                            _welcome_cache.pop(next(iter(_welcome_cache)))
                     return
 
             except asyncio.TimeoutError:
@@ -191,26 +196,18 @@ async def get_openrouter_key_info(session: aiohttp.ClientSession) -> dict | str:
         return "❌ Error pas mau ngecek limit."
 
 
-async def build_user_history(channel: discord.abc.Messageable, current_prompt: str) -> list[dict[str, str]]:
+async def build_user_history(channel: discord.abc.Messageable) -> list[dict[str, str]]:
     history: list[dict[str, str]] = []
-    skipped_current = False
 
     async for msg in channel.history(limit=AI_HISTORY_LIMIT):
         if msg.author.bot:
             continue
 
-        content = clean_text(msg.content, limit=500)
-        if not skipped_current and content == current_prompt:
-            skipped_current = True
-            continue
-
+        content = clean_text(msg.content, limit=MAX_HISTORY_MSG_LEN)
         if not content:
             continue
 
-        history.append({
-            "role": "user",
-            "content": content,
-        })
+        history.append({"role": "user", "content": content})
 
     history.reverse()
     return history
@@ -255,7 +252,7 @@ async def build_member_context(interaction: discord.Interaction, prompt: str) ->
 
 
 def is_on_cooldown(user_id: int) -> tuple[bool, int]:
-    now = asyncio.get_event_loop().time()
+    now = time.monotonic()
     last_used = ai_cooldowns.get(user_id)
 
     if last_used and now - last_used > AI_COOLDOWN_SECONDS * 10:
@@ -273,6 +270,74 @@ def is_on_cooldown(user_id: int) -> tuple[bool, int]:
 
     ai_cooldowns[user_id] = now
     return False, 0
+
+
+async def build_chat_messages(interaction: discord.Interaction, prompt: str) -> list[dict[str, str]]:
+    history = await build_user_history(interaction.channel)
+    member_context = await build_member_context(interaction, prompt)
+
+    system_content = AI_PERSONALITY
+    if member_context:
+        system_content += f"\n\nKonteks tambahan Discord:\n{member_context}"
+
+    return [
+        {"role": "system", "content": clean_text(system_content, limit=MAX_SYSTEM_LEN)},
+        *history,
+        {"role": "user", "content": prompt},
+    ]
+
+
+def build_chat_embed(prompt: str) -> discord.Embed:
+    embed = discord.Embed(title="🤖 Langit Chat", color=discord.Color.green())
+    embed.add_field(
+        name="💬 Pertanyaan",
+        value=prompt[:EMBED_FIELD_LIMIT] or "-",
+        inline=False,
+    )
+    embed.add_field(name="🧠 Jawaban", value="Sedang berpikir...", inline=False)
+    return embed
+
+
+async def stream_reply_into_embed(
+    message: discord.Message,
+    embed: discord.Embed,
+    session: aiohttp.ClientSession,
+    messages: list[dict[str, str]],
+) -> str:
+    reply = ""
+    last_update = time.monotonic()
+
+    async for chunk in stream_openrouter(session, messages):
+        reply += chunk
+
+        now = time.monotonic()
+        if now - last_update > STREAM_UPDATE_INTERVAL:
+            display = clean_text(reply, limit=EMBED_FIELD_LIMIT) or "..."
+            embed.set_field_at(1, name="🧠 Jawaban", value=display, inline=False)
+            try:
+                await message.edit(embed=embed)
+            except discord.NotFound:
+                break
+            except Exception as e:
+                logger.warning("Failed to update streaming message: %s", e)
+            last_update = now
+
+    return reply
+
+
+async def finalize_reply_embed(message: discord.Message, embed: discord.Embed, reply: str) -> str:
+    final_reply = clean_text(reply, limit=MAX_REPLY_LEN)
+    display = final_reply[:EMBED_FIELD_LIMIT] or "❌ Kosong jawabannya."
+    embed.set_field_at(1, name="🧠 Jawaban", value=display, inline=False)
+
+    try:
+        await message.edit(embed=embed)
+    except discord.NotFound:
+        pass
+    except Exception as e:
+        logger.warning("Failed final update of streaming message: %s", e)
+
+    return final_reply
 
 
 def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client):
@@ -303,85 +368,19 @@ def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client)
         await interaction.response.defer(thinking=True)
 
         try:
-            prompt = clean_text(prompt, limit=1000)
-
-            history = await build_user_history(interaction.channel, prompt)
-            member_context = await build_member_context(interaction, prompt)
-
-            system_content = AI_PERSONALITY
-
-            if member_context:
-                system_content += (
-                    "\n\nKonteks tambahan Discord:\n"
-                    f"{member_context}"
-                )
-
-            messages = [
-                {
-                    "role": "system",
-                    "content": clean_text(system_content, limit=1500),
-                },
-                *history,
-                {
-                    "role": "user",
-                    "content": prompt,
-                },
-            ]
-
-            reply = ""
-            embed = discord.Embed(
-                title="🤖 Langit Chat",
-                color=discord.Color.green(),
-            )
-            embed.add_field(
-                name="💬 Pertanyaan",
-                value=prompt[:1024] or "-",
-                inline=False,
-            )
-            embed.add_field(
-                name="🧠 Jawaban",
-                value="Sedang berpikir...",
-                inline=False,
-            )
+            prompt = clean_text(prompt, limit=MAX_PROMPT_LEN)
+            messages = await build_chat_messages(interaction, prompt)
+            embed = build_chat_embed(prompt)
 
             message = await interaction.followup.send(embed=embed)
+            reply = await stream_reply_into_embed(message, embed, client.ai_session, messages)
+            final_reply = await finalize_reply_embed(message, embed, reply)
 
-            last_update_time = asyncio.get_event_loop().time()
-            update_interval = 1.5  # Update every 1.5 seconds to avoid Discord rate limits
-
-            async for chunk in stream_openrouter(client.ai_session, messages):
-                reply += chunk
-                
-                now = asyncio.get_event_loop().time()
-                if now - last_update_time > update_interval:
-                    display_reply = clean_text(reply, limit=1024) or "..."
-                    embed.set_field_at(1, name="🧠 Jawaban", value=display_reply, inline=False)
-                    try:
-                        await message.edit(embed=embed)
-                    except discord.NotFound:
-                        break # Message was deleted
-                    except Exception as e:
-                        logger.warning("Failed to update streaming message: %s", e)
-                    
-                    last_update_time = now
-
-            # Final update
-            final_reply = clean_text(reply, limit=4000)
-            display_reply = final_reply[:1024] or "❌ Kosong jawabannya."
-            embed.set_field_at(1, name="🧠 Jawaban", value=display_reply, inline=False)
-            
-            try:
-                await message.edit(embed=embed)
-            except discord.NotFound:
-                pass
-            except Exception as e:
-                logger.warning("Failed final update of streaming message: %s", e)
-
-            if len(final_reply) > 1024:
-                remaining = final_reply[1024:]
+            if len(final_reply) > EMBED_FIELD_LIMIT:
+                remaining = final_reply[EMBED_FIELD_LIMIT:]
                 chunks = [
-                    remaining[i:i + 1900]
-                    for i in range(0, len(remaining), 1900)
+                    remaining[i:i + REPLY_CHUNK_LEN]
+                    for i in range(0, len(remaining), REPLY_CHUNK_LEN)
                 ]
 
                 for chunk in chunks:

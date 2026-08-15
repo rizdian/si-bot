@@ -101,8 +101,6 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
 
         if target.avatar:
             embed.set_image(url=target.avatar.url)
-            # Opsional: tambahkan link download atau link ke avatar
-            # embed.description = f"[Link Avatar]({target.avatar.url})"
         else:
             embed.description = "User ini tidak memiliki avatar."
 
@@ -276,30 +274,3 @@ def register_general_commands(tree: app_commands.CommandTree, client: discord.Cl
             "👋 Keluar dari voice channel",
             ephemeral=True,
         )
-
-    # @tree.command(name="sync", description="Sync command bot (Owner Only)", guild=TEST_GUILD)
-    # @app_commands.describe(scope="Scope untuk sync (global/guild)")
-    # async def sync(interaction: discord.Interaction, scope: Optional[str] = "guild") -> None:
-    #     if interaction.user.id != OWNER_USER_ID:
-    #         await interaction.response.send_message(
-    #             "❌ Lu bukan owner gue, jangan sok asik dah.",
-    #             ephemeral=True
-    #         )
-    #         return
-    #
-    #     await interaction.response.defer(ephemeral=True)
-    #
-    #     try:
-    #         if scope == "global":
-    #             synced = await tree.sync()
-    #             await interaction.followup.send(f"✅ Berhasil sync {len(synced)} command secara global.")
-    #         else:
-    #             guild = interaction.guild
-    #             if guild:
-    #                 tree.copy_global_to(guild=guild)
-    #                 synced = await tree.sync(guild=guild)
-    #                 await interaction.followup.send(f"✅ Berhasil sync {len(synced)} command ke guild ini.")
-    #             else:
-    #                 await interaction.followup.send("❌ Guild kagak ketemu njir.")
-    #     except Exception as e:
-    #         await interaction.followup.send(f"❌ Gagal sync: {e}")

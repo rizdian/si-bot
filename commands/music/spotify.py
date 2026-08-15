@@ -6,6 +6,7 @@ from typing import Optional
 import aiohttp
 
 from config import SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, OPENROUTER_API_KEY, OPENROUTER_MODEL
+from commands.ai import ask_openrouter
 
 logger = logging.getLogger("bot")
 
@@ -152,7 +153,6 @@ async def ai_recommend_music(
     ]
 
     try:
-        from commands.ai import ask_openrouter
         reply = await ask_openrouter(session, messages)
 
         if not reply or "❌" in reply:

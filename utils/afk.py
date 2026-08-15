@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, TypedDict
 
-_afk_store: dict[int, dict] = {}
+
+class AfkRecord(TypedDict):
+    original_nick: Optional[str]
+    timestamp: datetime
+    reason: Optional[str]
+
+
+_afk_store: dict[int, AfkRecord] = {}
 
 
 def set_afk(user_id: int, original_nick: Optional[str], reason: Optional[str] = None) -> None:
@@ -14,7 +21,7 @@ def set_afk(user_id: int, original_nick: Optional[str], reason: Optional[str] = 
     }
 
 
-def remove_afk(user_id: int) -> Optional[dict]:
+def remove_afk(user_id: int) -> Optional[AfkRecord]:
     return _afk_store.pop(user_id, None)
 
 
@@ -22,11 +29,11 @@ def is_afk(user_id: int) -> bool:
     return user_id in _afk_store
 
 
-def get_afk(user_id: int) -> Optional[dict]:
+def get_afk(user_id: int) -> Optional[AfkRecord]:
     return _afk_store.get(user_id)
 
 
-def get_all_afk() -> dict[int, dict]:
+def get_all_afk() -> dict[int, AfkRecord]:
     return dict(_afk_store)
 
 

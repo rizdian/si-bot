@@ -1,7 +1,6 @@
 import logging
 import discord
-from utils.logger import send_log_embed, send_member_log_embed, format_datetime
-from config import WELCOME_CHANNEL_ID, WELCOME_PROMPT, ROLE_BOYS_ID, ROLE_GIRLS_ID, EMOJI_BOY, EMOJI_GIRL, AI_PERSONALITY
+from config import WELCOME_CHANNEL_ID, WELCOME_PROMPT, ROLE_BOYS_ID, ROLE_GIRLS_ID, EMOJI_BOY, EMOJI_GIRL
 from commands.ai import ask_openrouter
 
 logger = logging.getLogger("bot")
@@ -10,20 +9,6 @@ logger = logging.getLogger("bot")
 def register_member_events(client: discord.Client):
     @client.event
     async def on_member_join(member: discord.Member) -> None:
-        # await send_member_log_embed(
-        #     client=client,
-        #     member=member,
-        #     title="📥 MEMBER JOINED",
-        #     description=f"**{member}** baru saja join ke server!",
-        #     fields=[
-        #         ("👤 User", member.mention, False),
-        #         ("📅 Account Created", format_datetime(member.created_at), True),
-        #         ("🆔 ID", str(member.id), True),
-        #         ("👥 Member Count", str(member.guild.member_count), True),
-        #     ],
-        # )
-
-        # 2. Auto Welcome Message with Langit
         if WELCOME_CHANNEL_ID:
             channel = client.get_channel(WELCOME_CHANNEL_ID)
             if not channel:
