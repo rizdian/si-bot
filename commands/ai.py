@@ -39,10 +39,32 @@ EMBED_FIELD_LIMIT = 1024
 MAX_REPLY_LEN = 4000
 REPLY_CHUNK_LEN = 1900
 STREAM_UPDATE_INTERVAL = 1.5
+AI_RATE_LIMIT_RPM = 15
 
 ai_cooldowns: dict[int, float] = {}
 
 _welcome_cache: dict[str, str] = {}
+
+_request_timestamps: list[float] = []
+
+
+async def _throttle_rate_limit(session: aiohttp.ClientSession) -> None:
+    if not hasattr(session, "_openrouter_rate_lock"):
+        session._openrouter_rate_lock = asyncio.Lock()
+
+    async with session._openrouter_rate_lock:
+        window = 60
+        while True:
+            now = time.monotonic()
+            _request_timestamps[:] = [t for t in _request_timestamps if t > now - window]
+
+            if len(_request_timestamps) < AI_RATE_LIMIT_RPM:
+                _request_timestamps.append(now)
+                return
+
+            sleep_for = _request_timestamps[0] + window - now
+            logger.warning("Rate limit throttle sleep=%.2fs rpm=%s", sleep_for, len(_request_timestamps))
+            await asyncio.sleep(max(sleep_for, 0.1))
 
 
 def clean_text(text: str, limit: int = 1000) -> str:
@@ -92,6 +114,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
         for attempt in range(1, AI_MAX_RETRIES * 2 + 1):
             phase_attempt = (attempt - 1) % AI_MAX_RETRIES + 1
             try:
+                await _throttle_rate_limit(session)
                 async with session.post(
                     OPENROUTER_BASE_URL,
                     headers=headers,
