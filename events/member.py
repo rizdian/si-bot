@@ -2,6 +2,7 @@ import logging
 import discord
 from config import WELCOME_CHANNEL_ID, WELCOME_PROMPT, ROLE_BOYS_ID, ROLE_GIRLS_ID, EMOJI_BOY, EMOJI_GIRL
 from commands.ai import ask_openrouter
+from utils.logger import send_member_log_embed
 
 logger = logging.getLogger("bot")
 
