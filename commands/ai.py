@@ -17,10 +17,12 @@ from config import (
     OPENROUTER_KEY_URL,
     OPENROUTER_FREE_MODEL,
     OPENROUTER_PAID_MODEL,
+    GRAVEYARD_CHANNEL_ID,
     AI_PERSONALITY,
     OWNER_USER_ID,
     WELCOME_PROMPT,
 )
+from utils.logger import send_graveyard_message
 
 logger = logging.getLogger("bot")
 
@@ -46,6 +48,27 @@ ai_cooldowns: dict[int, float] = {}
 _welcome_cache: dict[str, str] = {}
 
 _request_timestamps: list[float] = []
+_discord_client: discord.Client | None = None
+
+
+def _notify_paid_usage(reason: str, usage: dict) -> None:
+    if not GRAVEYARD_CHANNEL_ID or not _discord_client:
+        return
+
+    cost = usage.get("cost")
+    cost_str = f"${float(cost):.6f}" if cost is not None else "N/A"
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+
+    content = (
+        f"⚰️ **PAID MODEL DIPAKAI**\n"
+        f"🤖 Model: `{OPENROUTER_PAID_MODEL}`\n"
+        f"❓ Alasan: {reason}\n"
+        f"📊 Token: {usage.get('prompt_tokens', 0)} in / {usage.get('completion_tokens', 0)} out / {usage.get('total_tokens', 0)} total\n"
+        f"💰 Cost: {cost_str}\n"
+        f"🕒 Waktu: {timestamp}"
+    )
+
+    asyncio.create_task(send_graveyard_message(_discord_client, content))
 
 
 async def _throttle_rate_limit(session: aiohttp.ClientSession) -> None:
@@ -109,6 +132,8 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
 
     full_reply_for_cache = ""
     fallback_used = False
+    fallback_reason = ""
+    last_usage: dict = {}
 
     async with session._openrouter_sem:
         for attempt in range(1, AI_MAX_RETRIES * 2 + 1):
@@ -137,6 +162,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                             payload["model"] = OPENROUTER_PAID_MODEL
                             fallback_used = True
                             logger.info("Free model gagal, switch ke paid: %s", OPENROUTER_PAID_MODEL)
+                            fallback_reason = f"HTTP {resp.status}"
                             retry_delay = 1.5
                             continue
 
@@ -157,6 +183,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                             payload["model"] = OPENROUTER_PAID_MODEL
                             fallback_used = True
                             logger.info("Free model failed, switching to paid: %s", OPENROUTER_PAID_MODEL)
+                            fallback_reason = f"HTTP {resp.status}"
                             continue
                         yield "❌ Lagi error dikit. Coba tag moderator aja."
                         return
@@ -183,6 +210,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
 
                                 usage = data.get("usage")
                                 if usage:
+                                    last_usage = usage
                                     logger.info(
                                         "OpenRouter usage model=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s cost=%s",
                                         data.get("model", payload["model"]),
@@ -207,6 +235,8 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                         _welcome_cache[cache_key] = full_reply_for_cache
                         if len(_welcome_cache) > 100:
                             _welcome_cache.pop(next(iter(_welcome_cache)))
+                    if fallback_used and last_usage:
+                        _notify_paid_usage(fallback_reason, last_usage)
                     return
 
             except asyncio.TimeoutError:
@@ -221,6 +251,7 @@ async def stream_openrouter(session: aiohttp.ClientSession, messages: list[dict[
                 payload["model"] = OPENROUTER_PAID_MODEL
                 fallback_used = True
                 logger.info("Free model timeout/error, switch ke paid: %s", OPENROUTER_PAID_MODEL)
+                fallback_reason = "timeout/error"
                 retry_delay = 1.5
 
     yield "❌ Bentar, lagi lag. Coba lagi nanti."
@@ -419,6 +450,9 @@ async def finalize_reply_embed(message: discord.Message, embed: discord.Embed, r
 
 
 def register_ai_commands(tree: app_commands.CommandTree, client: discord.Client):
+    global _discord_client
+    _discord_client = client
+
     @tree.command(
         name="chat",
         description="Tanya Langit (AI)",

@@ -5,7 +5,7 @@ import aiohttp
 import discord
 from discord import app_commands
 
-from config import TOKEN, LOG_CHANNEL_ID, GUILD_ID
+from config import TOKEN, LOG_CHANNEL_ID, GUILD_ID, GRAVEYARD_CHANNEL_ID
 from commands.general import register_general_commands
 from commands.ai import register_ai_commands
 from commands.music import register_music_commands

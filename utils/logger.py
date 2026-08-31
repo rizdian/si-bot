@@ -3,7 +3,7 @@ from typing import Iterable, Optional
 import logging
 
 import discord
-from config import LOG_CHANNEL_ID, LOG_MEMBER_CHANNEL_ID
+from config import LOG_CHANNEL_ID, LOG_MEMBER_CHANNEL_ID, GRAVEYARD_CHANNEL_ID
 
 
 logger = logging.getLogger("discord_logger")
@@ -122,3 +122,19 @@ async def send_member_log_embed(
 
     except Exception:
         logger.exception("Gagal mengirim member log embed ke channel")
+
+
+async def send_graveyard_message(client: discord.Client, content: str) -> None:
+    if not GRAVEYARD_CHANNEL_ID:
+        return
+
+    channel = client.get_channel(GRAVEYARD_CHANNEL_ID)
+
+    if not channel or not isinstance(channel, discord.TextChannel):
+        logger.error("Channel graveyard dengan ID %s tidak ditemukan!", GRAVEYARD_CHANNEL_ID)
+        return
+
+    try:
+        await channel.send(content)
+    except Exception:
+        logger.exception("Gagal mengirim graveyard message")

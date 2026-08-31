@@ -33,6 +33,7 @@ IS_OWNER_INACTIVE = os.getenv("IS_OWNER_INACTIVE", "false").strip().lower() in (
 GUILD_ID = get_env_int("GUILD_ID")
 WELCOME_CHANNEL_ID = get_env_int("WELCOME_CHANNEL_ID")
 TITLE_CHANNEL_ID = get_env_int("TITLE_CHANNEL_ID")
+GRAVEYARD_CHANNEL_ID = get_env_int("GRAVEYARD_CHANNEL_ID")
 
 ROLE_BOYS_ID = get_env_int("ROLE_BOYS_ID")
 ROLE_GIRLS_ID = get_env_int("ROLE_GIRLS_ID")
