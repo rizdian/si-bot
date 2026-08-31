@@ -74,26 +74,7 @@ def register_message_events(client: discord.Client):
                         )
                         break
 
-        # ── "mainkan <judul/link>" trigger ──────────────────────────────
-        mainkan_match = MAINKAN_PATTERN.match(message.content.strip())
-        if mainkan_match:
-            search = mainkan_match.group(1).strip()
-            member = message.author
-
-            if not isinstance(member, discord.Member) or not member.voice or not member.voice.channel:
-                await message.reply("❌ Lu harus join voice channel dulu lah!")
-                return
-
-            from commands.music import do_play
-            await do_play(
-                search=search,
-                guild=message.guild,
-                voice_channel=member.voice.channel,
-                send=message.channel.send,
-                channel=message.channel,
-                requester=member,
-                client=client,
-            )
+        if message.mention_everyone or "@everyone" in message.content or "@here" in message.content:
             return
 
         if OWNER_USER_ID and is_manual_mention(message, OWNER_USER_ID):
